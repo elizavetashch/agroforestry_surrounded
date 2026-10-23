@@ -1,0 +1,7 @@
+pca,statistic,PC1,PC2,PC3
+climate,Standard deviation,1.61842397568081,0.5214743209914816,0.3298004964944621
+climate,Proportion of Variance,0.8731,0.09065,0.03626
+climate,Cumulative Proportion,0.8731,0.96374,1
+soil,Standard deviation,1.621569289475952,0.6086937652837536,0.002222506050181603
+soil,Proportion of Variance,0.8765,0.1235,0
+soil,Cumulative Proportion,0.8765,1,1

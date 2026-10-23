@@ -3,8 +3,6 @@ _targets/
 .Rhistory
 .RData
 .Ruserdata
-01_inputdata/dwd/
-# large or licensed raw data: remove the # to keep them out of GitHub
-# 01_inputdata/lulc/
-# 01_inputdata/swf/
-# 01_inputdata/soilgrids/
+01_inputdata
+01_inputdata
+01_inputdata
