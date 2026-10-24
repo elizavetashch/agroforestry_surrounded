@@ -92,6 +92,7 @@ list(
   tar_target(zuur6, zuur_step6_relationships(moddata, zuur$y, zuur$covariates, zuur$condition, zuur_dir), format = "file"),
   tar_target(zuur7, zuur_step7_interactions(moddata, zuur$y, zuur$covariates, zuur$interactions, zuur_dir), format = "file"),
   tar_target(zuur8, zuur_step8_independence(moddata, zuur$naive, zuur$random, zuur$order_by, zuur_dir), format = "file"),
+  tar_target(add_season_croptype, season_croptype(moddata, zuur_dir), format = "file"), 
 
   # (3) modelling ----------------------------------------------------------------
   tar_target(gamdata, add_swf_matrix(moddata)),

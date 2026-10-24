@@ -204,3 +204,15 @@ zuur_step8_independence <- function(df, naive_formula, random, order_by, dir) {
     save_plot(p_acf, file.path(dir, "step8_acf.png")),
     save_table(vc_tab, file.path(dir, "step8_variance_components.csv")))
 }
+
+
+
+# Further Investigations behind Zuur --------------------------------------
+
+
+# (1) What crops are winter crops what crops are summer crops  ------------
+
+season_croptype <- function(df, dir){
+  seasontab <- table(df$crop_unified, df$crop_season)
+  save_table(seasontab, file.path(dir, "add_season_croptype.csv"))
+}
