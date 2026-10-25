@@ -194,9 +194,8 @@ prep_koch <- function(file, min_year = 2016) {
   d <- d |>
     dplyr::mutate(distance_to_tree_strip = dplyr::case_when(
       p_dist < 1.1  ~ 1,
-      p_dist < 4.1  ~ 4,
-      p_dist < 7.1  ~ 7,
-      p_dist < 12.1 ~ 12,
+      p_dist < 6.1  ~ 6,
+      p_dist < 12.1  ~ 12,
       p_dist < 18.1 ~ 18,
       p_dist >= 18.1 ~ 24
     )) |>

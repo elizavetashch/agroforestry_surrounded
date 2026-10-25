@@ -55,7 +55,7 @@ list(
   tar_target(mariensee, prep_mariensee(f_mariensee) |> check_field_data(60, "mariensee")),
   tar_target(forst, prep_forst(signal16, f_forst) |> check_field_data(80, "forst")),
   tar_target(gladbacherhof, prep_gladbacherhof(f_gladbacherhof) |> check_field_data(144, "gladbacherhof")),
-  tar_target(koch, prep_koch(f_koch) |> check_field_data(480, "koch")),
+  tar_target(koch, prep_koch(f_koch) |> check_field_data(451, "koch")),
 
   # (1) data preparation: merge and add site variables
   tar_target(merged,
