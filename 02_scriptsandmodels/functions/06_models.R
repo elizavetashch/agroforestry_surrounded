@@ -1,40 +1,57 @@
+library(mgcv)
+
 random_terms <- "s(field, bs = \"re\") + s(year, bs = \"re\") + s(key34, bs = \"re\")"
-dist_crop    <- "crop_unified + s(distance_to_tree_strip, k = 5, by = crop_unified)"
-dist_age     <- "ti(distance_to_tree_strip, treeage, k = c(5, 5))"
-swf_term     <- "s(R, by = SWF, k = 4)"
-landscape    <- "l_shdi + l_contag + l_ed"
 
 model_formulas <- function() {
   f <- function(y, ...) paste(y, "~", paste(c(...), collapse = " + "))
+  
+  # --- Fixed-effect building blocks -----------------------------------------
+  terms <- c(
+    crop      = "crop_unified",
+    dist      = "s(distance_to_tree_strip, k = 5)",
+    dist_crop = "crop_unified + s(distance_to_tree_strip, k = 5, by = crop_unified)",
+    dist_age  = "ti(distance_to_tree_strip, treeage, k = c(5, 5))",
+    swf       = "s(R, by = SWF, k = 4)",
+    land      = "l_shdi + l_contag + l_ed",
+    prop_in   = "prop_swf_within",
+    site      = "treeage + AFage + PC1_c + PC1_s"
+  )
+  
+  # --- Model specifications --------------------------------------------------
+  specs <- list(
+    m_00     = list(h = "H1a: yield varies with distance to the tree strip",
+                    keys = c("crop", "dist")),
+    m_01     = list(h = "H1b: the distance effect differs among crops",
+                    keys = c("dist_crop")),
+    m_02     = list(h = "H2: the distance effect changes with tree age",
+                    keys = c("dist_crop", "dist_age")),
+    m_03     = list(h = "H3: surrounding SWF affect yield (no distance effect)",
+                    keys = c("crop", "swf")),
+    m_04     = list(h = "H4: surrounding SWF improve the distance model",
+                    keys = c("dist_crop", "dist_age", "swf")),
+    m_05     = list(h = "H5: landscape composition and configuration affect yield (no distance effect)",
+                    keys = c("crop", "land")),
+    m_06     = list(h = "H6: landscape improves the distance + SWF model",
+                    keys = c("dist_crop", "dist_age", "swf", "land")),
+    m_07     = list(h = "H7: in-field SWF proportion adds information beyond landscape and surrounding SWF",
+                    keys = c("dist_crop", "dist_age", "swf", "land", "prop_in")),
+    m_08     = list(h = "H8: in-field SWF proportion alone improves the distance model",
+                    keys = c("dist_crop", "dist_age", "prop_in")),
+    m_09     = list(h = "H9: surrounding SWF are a better spill-over proxy than landscape heterogeneity",
+                    keys = c("dist_crop", "dist_age", "swf", "prop_in")),
+    m_10     = list(h = "H10: site characteristics improve the model",
+                    keys = c("dist_crop", "dist_age", "swf", "land", "site")),
+    m_global = list(h = "Global: in-field complexity effect shaped by landscape, controlling for site",
+                    keys = c("dist_crop", "dist_age", "swf", "land", "site", "prop_in"))
+  )
+  
   data.frame(
-    name = c("m_00", "m_01", "m_02", "m_03", "m_04", "m_05", "m_06", "m_07", "m_08", "m_09", "m_10", "m_global"),
-    hypothesis = c(
-      "H1 distance", "H1 distance by crop", "H2 distance by crop x tree age", 
-      "H3 SWF + no distance, but with crop effect",
-      "H4: H2 + SWF", "H5 landscape + no distance, but with crop effect", 
-      "H6  distance by  + dist_age + SWF + landscape",
-      "H7 distance by  + dist_age + SWF + landscape + proportion_within", 
-      "H8: distance by  + dist_age + proportion_within", 
-      "H9: distance by  + dist_age + SWF + landscape + proportion_within", 
-      "H10: dist_crop, dist_age, swf_term, landscape, treeage + AFage + PC1_c + PC1_s",
-      "global"
-    ),
-    formula = c(
-      f("yield_tha", "s(distance_to_tree_strip, k = 5)", "crop_unified", random_terms), #m_00
-      f("yield_tha", dist_crop, random_terms), #m_01
-      f("yield_tha", dist_crop, dist_age, random_terms), #m_02
-      f("yield_tha", "crop_unified", swf_term, random_terms), #m_03
-      f("yield_tha", dist_crop, dist_age, swf_term, random_terms), #m_04
-      f("yield_tha", "crop_unified", landscape, random_terms), #m_05
-      f("yield_tha", dist_crop, dist_age, swf_term, landscape, random_terms), #m_06
-      f("yield_tha", dist_crop, dist_age, swf_term, landscape, "prop_swf_within", random_terms), #m_07
-      f("yield_tha", dist_crop, dist_age, "prop_swf_within", random_terms), #m_08
-      f("yield_tha", dist_crop, dist_age, swf_term, "prop_swf_within", random_terms), #m_09
-      f("yield_tha", dist_crop, dist_age, swf_term, landscape, #m_10
-        "treeage + AFage + PC1_c + PC1_s", random_terms),
-      f("yield_tha", dist_crop, dist_age, swf_term, landscape, #m_global
-        "treeage + AFage + PC1_c + PC1_s", random_terms, "prop_swf_within")
-    )
+    name       = names(specs),
+    hypothesis = vapply(specs, `[[`, character(1), "h"),
+    formula    = vapply(specs, function(s) f("yield_tha", terms[s$keys], random_terms),
+                        character(1)),
+    row.names  = NULL,
+    stringsAsFactors = FALSE
   )
 }
 
