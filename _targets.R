@@ -12,16 +12,18 @@ clim_vars <- c("temp_C_mean", "precip_mm_sum", "sun_MJ_m2_mean")
 soil_vars <- c("clay", "sand", "silt")
 
 zuur <- list(
-  y            = "yield_rel",
+  y      = "yield_tha",
+  naive  = "yield_tha ~ distance_to_tree_strip + crop_unified",
+  random = c("field", "year"),
   groups       = c("field", "year", "crop_unified", "crop_season", "distance_to_tree_strip"),
   covariates   = c("distance_to_tree_strip", "treeage", "AFage", "l_shdi", "l_contag", "l_ed",
                    "mean_slope", "prop_swf_within", "PC1_c", "PC1_s"),
   condition    = "crop_season",
   interactions = c("crop_unified", "crop_season"),
-  naive        = "yield_rel ~ distance_to_tree_strip",
-  random       = c("field", "year", "crop_season"),
   order_by     = c("field", "plot", "year")
 )
+
+family_formula <- "yield_tha ~ crop_unified + s(distance_to_tree_strip, k = 5, by = crop_unified) + s(field, bs = \"re\") + s(year, bs = \"re\")"
 
 list(
   # (1) data preparation: input files ------------------------------------------
@@ -92,6 +94,8 @@ list(
   tar_target(zuur6, zuur_step6_relationships(moddata, zuur$y, zuur$covariates, zuur$condition, zuur_dir), format = "file"),
   tar_target(zuur7, zuur_step7_interactions(moddata, zuur$y, zuur$covariates, zuur$interactions, zuur_dir), format = "file"),
   tar_target(zuur8, zuur_step8_independence(moddata, zuur$naive, zuur$random, zuur$order_by, zuur_dir), format = "file"),
+  tar_target(zuur9, family_qq(moddata, "yield_tha", zuur_dir), format = "file"),
+  tar_target(family_check, family_compare(gamdata, family_formula, model_dir), format = "file"),
   tar_target(add_season_croptype, season_croptype(moddata, zuur_dir), format = "file"), 
 
   # (3) modelling ----------------------------------------------------------------

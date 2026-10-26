@@ -69,7 +69,7 @@ make_moddata <- function(df, swf, clim_vars, soil_vars) {
   d <- d |>
     dplyr::left_join(dplyr::select(clim_units, key34, PC1_c), by = "key34") |>
     dplyr::left_join(dplyr::select(soil_units, key34, PC1_s), by = "key34") |>
-    dplyr::mutate(dplyr::across(c(field, year, crop_unified, crop_season), as.factor))
+    dplyr::mutate(dplyr::across(c(field, year, crop_unified, crop_season, key34), as.factor))
   if (nrow(d) != n) stop("make_moddata: PCA join duplicated rows (more than one climate or soil value per field x year x crop)")
   d
 }

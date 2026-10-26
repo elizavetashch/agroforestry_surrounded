@@ -57,19 +57,18 @@ save_model_figures <- function(models, dir) {
 
 plot_relative_yield <- function(moddata, file) {
   means <- moddata |>
-    dplyr::summarise(yield_rel = mean(yield_rel, na.rm = TRUE),
-                     .by = c(field, year, crop_season, distance_to_tree_strip))
-  p <- ggplot(moddata, aes(distance_to_tree_strip, yield_rel)) +
-    geom_jitter(aes(colour = crop_season), width = 0.3, height = 0, alpha = 0.25, size = 1.2) +
-    geom_line(data = means, aes(group = interaction(field, year), colour = crop_season),
-              alpha = 0.5, linewidth = 0.4) +
-    geom_smooth(method = "gam", formula = y ~ s(x, k = 5), colour = "black", fill = "grey60") +
-    stat_summary(fun.data = mean_se, geom = "pointrange", colour = "black", size = 0.4) +
-    geom_hline(yintercept = 1, linetype = "dashed", colour = "grey40") +
-    labs(x = "Distance to tree strip (m)", y = "Relative yield", colour = "Crop season") +
+    dplyr::summarise(yield_tha = mean(yield_tha, na.rm = TRUE),
+                     .by = c(field, year, crop_unified, distance_to_tree_strip))
+  p <- ggplot(moddata, aes(distance_to_tree_strip, yield_tha)) +
+    geom_jitter(aes(colour = field), width = 0.3, height = 0, alpha = 0.25, size = 1.2) +
+    geom_line(data = means, aes(group = interaction(field, year), colour = field),
+              alpha = 0.6, linewidth = 0.4) +
+    stat_summary(fun.data = mean_se, geom = "pointrange", colour = "black", size = 0.3) +
+    facet_wrap(~ crop_unified, scales = "free_y") +
+    labs(x = "Distance to tree strip (m)", y = expression(Yield~(t~ha^-1)), colour = "Site") +
     theme_bw(base_size = 12) +
     theme(legend.position = "bottom")
-  save_plot(p, file, 8, 6)
+  save_plot(p, file, 10, 7)
 }
 
 plot_distance_by_crop <- function(models, data, file, model = "m_01") {
@@ -78,23 +77,23 @@ plot_distance_by_crop <- function(models, data, file, model = "m_01") {
   nd <- expand.grid(distance_to_tree_strip = seq(min(data$distance_to_tree_strip),
                                                  max(data$distance_to_tree_strip), length.out = 100),
                     crop_unified = crops)
-  nd$field <- data$field[1]
-  nd$crop_season <- data$crop_season[!is.na(data$crop_season)][1]
-  nd$year <- data$year[1]
-  ex <- grep("field|crop_season|year", vapply(m$smooth, `[[`, "", "label"), value = TRUE)
-  pr <- stats::predict(m, nd, se.fit = TRUE, exclude = ex)
-  nd$fit <- pr$fit
-  nd$lwr <- pr$fit - 1.96 * pr$se.fit
-  nd$upr <- pr$fit + 1.96 * pr$se.fit
+  for (v in intersect(c("key34", "field", "year", "crop_season"), names(data))) {
+    nd[[v]] <- data[[v]][!is.na(data[[v]])][1]
+  }
+  ex <- grep("key34|field|year|crop_season", vapply(m$smooth, `[[`, "", "label"), value = TRUE)
+  pr <- stats::predict(m, nd, type = "link", se.fit = TRUE, exclude = ex)
+  nd$fit <- exp(pr$fit)
+  nd$lwr <- exp(pr$fit - 1.96 * pr$se.fit)
+  nd$upr <- exp(pr$fit + 1.96 * pr$se.fit)
   rng <- dplyr::summarise(data, lo = min(distance_to_tree_strip), hi = max(distance_to_tree_strip), .by = crop_unified)
   nd <- dplyr::left_join(nd, rng, by = "crop_unified") |>
     dplyr::filter(distance_to_tree_strip >= lo, distance_to_tree_strip <= hi)
   p <- ggplot(nd, aes(distance_to_tree_strip, fit)) +
     geom_ribbon(aes(ymin = lwr, ymax = upr), fill = "grey80") +
     geom_line() +
-    geom_hline(yintercept = 1, linetype = "dashed", colour = "grey40") +
-    facet_wrap(~ crop_unified) +
-    labs(x = "Distance to tree strip (m)", y = paste("Predicted relative yield,", model)) +
+    facet_wrap(~ crop_unified, scales = "free_y") +
+    labs(x = "Distance to tree strip (m)", y = bquote("Predicted yield (t ha"^-1*"), " * .(model))) +
     theme_bw()
   save_plot(p, file, 9, 6)
 }
+

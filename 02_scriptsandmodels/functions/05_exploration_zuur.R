@@ -216,3 +216,69 @@ season_croptype <- function(df, dir){
   seasontab <- table(df$crop_unified, df$crop_season)
   save_table(seasontab, file.path(dir, "add_season_croptype.csv"))
 }
+
+
+# (2) Distribution choice -------------------------------------------------
+
+# Step 9: which distribution fits the response?
+
+family_qq <- function(df, y, dir) {
+  x <- df[[y]]
+  x <- x[!is.na(x) & x > 0]
+  p <- stats::ppoints(length(x))
+  m <- mean(x)
+  g <- MASS::fitdistr(x / m, "gamma")$estimate
+  ln <- MASS::fitdistr(x, "lognormal")$estimate
+  w <- suppressWarnings(MASS::fitdistr(x / m, "weibull")$estimate)
+  dists <- list(
+    Normal    = list(q = stats::qnorm(p, m, stats::sd(x)), ll = sum(stats::dnorm(x, m, stats::sd(x), log = TRUE))),
+    Lognormal = list(q = stats::qlnorm(p, ln[1], ln[2]), ll = sum(stats::dlnorm(x, ln[1], ln[2], log = TRUE))),
+    Gamma     = list(q = stats::qgamma(p, g[1], g[2] / m), ll = sum(stats::dgamma(x, g[1], g[2] / m, log = TRUE))),
+    Weibull   = list(q = stats::qweibull(p, w[1], w[2] * m), ll = sum(stats::dweibull(x, w[1], w[2] * m, log = TRUE)))
+  )
+  qq <- dplyr::bind_rows(lapply(names(dists), function(d) {
+    data.frame(distribution = d, theoretical = dists[[d]]$q, observed = sort(x))
+  }))
+  p_qq <- ggplot(qq, aes(theoretical, observed)) +
+    geom_abline(colour = "red") +
+    geom_point(size = 0.8, alpha = 0.5) +
+    facet_wrap(~ distribution, scales = "free") +
+    labs(x = "Theoretical quantiles", y = paste("Observed", y)) +
+    theme_bw()
+  tab <- data.frame(distribution = names(dists), logLik = vapply(dists, `[[`, 0, "ll")) |>
+    dplyr::mutate(AIC = -2 * logLik + 2 * 2, delta_AIC = AIC - min(AIC)) |>
+    dplyr::arrange(AIC)
+  c(save_plot(p_qq, file.path(dir, "step9_qq_distributions.png"), 8, 7),
+    save_table(tab, file.path(dir, "step9_distribution_fit.csv")))
+}
+
+family_compare <- function(data, formula, dir) {
+  f <- stats::as.formula(formula)
+  y <- data[[all.vars(f)[1]]]
+  fits <- list(
+    Gaussian  = mgcv::gam(f, data = data, family = gaussian(), method = "ML"),
+    Gamma_log = mgcv::gam(f, data = data, family = Gamma(link = "log"), method = "ML"),
+    Tweedie   = mgcv::gam(f, data = data, family = mgcv::tw(), method = "ML"),
+    Lognormal = mgcv::gam(stats::update(f, log(.) ~ .), data = data, family = gaussian(), method = "ML")
+  )
+  tab <- dplyr::bind_rows(lapply(names(fits), function(n) {
+    a <- stats::AIC(fits[[n]])
+    if (n == "Lognormal") a <- a + 2 * sum(log(y))   # puts the log-scale model on the yield scale
+    data.frame(family = n, AIC = a, deviance_explained = summary(fits[[n]])$dev.expl)
+  })) |>
+    dplyr::mutate(delta_AIC = AIC - min(AIC), .after = AIC) |>
+    dplyr::arrange(AIC)
+  
+  f_png <- file.path(dir, "family_residuals.png")
+  grDevices::png(f_png, width = 4000, height = 2000, res = 300)
+  graphics::par(mfrow = c(2, 4))
+  for (n in names(fits)) mgcv::qq.gam(fits[[n]], pch = 16, cex = 0.4, main = paste("QQ:", n))
+  for (n in names(fits)) {
+    plot(stats::fitted(fits[[n]]), stats::residuals(fits[[n]], type = "deviance"), pch = 16, cex = 0.4,
+         col = "grey40", xlab = "Fitted values", ylab = "Deviance residuals", main = paste("Residuals:", n))
+    graphics::abline(h = 0, col = "red", lty = 2)
+  }
+  grDevices::dev.off()
+  
+  c(save_table(tab, file.path(dir, "family_comparison_aic.csv")), f_png)
+}

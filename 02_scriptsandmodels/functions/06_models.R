@@ -20,25 +20,25 @@ model_formulas <- function() {
       "global"
     ),
     formula = c(
-      f("yield_rel", "s(distance_to_tree_strip, k = 5)", random_terms), #m_00
-      f("yield_rel", dist_crop, random_terms), #m_01
-      f("yield_rel", dist_crop, dist_age, random_terms), #m_02
+      f("yield_tha", "s(distance_to_tree_strip, k = 5)", "crop_unified", random_terms), #m_00
+      f("yield_tha", dist_crop, random_terms), #m_01
+      f("yield_tha", dist_crop, dist_age, random_terms), #m_02
       f("yield_tha", "crop_unified", swf_term, random_terms), #m_03
-      f("yield_rel", dist_crop, dist_age, swf_term, random_terms), #m_04
-      f("yield_rel", "crop_unified", landscape, random_terms), #m_05
-      f("yield_rel", dist_crop, dist_age, swf_term, landscape, random_terms), #m_06
-      f("yield_rel", dist_crop, dist_age, swf_term, landscape, "prop_swf_within", random_terms), #m_07
-      f("yield_rel", dist_crop, dist_age, "prop_swf_within", random_terms), #m_08
-      f("yield_rel", dist_crop, dist_age, swf_term, "prop_swf_within", random_terms), #m_09
-      f("yield_rel", dist_crop, dist_age, swf_term, landscape, #m_10
+      f("yield_tha", dist_crop, dist_age, swf_term, random_terms), #m_04
+      f("yield_tha", "crop_unified", landscape, random_terms), #m_05
+      f("yield_tha", dist_crop, dist_age, swf_term, landscape, random_terms), #m_06
+      f("yield_tha", dist_crop, dist_age, swf_term, landscape, "prop_swf_within", random_terms), #m_07
+      f("yield_tha", dist_crop, dist_age, "prop_swf_within", random_terms), #m_08
+      f("yield_tha", dist_crop, dist_age, swf_term, "prop_swf_within", random_terms), #m_09
+      f("yield_tha", dist_crop, dist_age, swf_term, landscape, #m_10
         "treeage + AFage + PC1_c + PC1_s", random_terms),
-      f("yield_rel", dist_crop, dist_age, swf_term, landscape, #m_global
+      f("yield_tha", dist_crop, dist_age, swf_term, landscape, #m_global
         "treeage + AFage + PC1_c + PC1_s", random_terms, "prop_swf_within")
     )
   )
 }
 
 fit_model <- function(data, spec) {
-  fit <- mgcv::gam(stats::as.formula(spec$formula), data = data, method = "REML")
+  fit <- mgcv::gam(stats::as.formula(spec$formula), data = data, family = Gamma(link = "log"), method = "REML")
   list(name = spec$name, hypothesis = spec$hypothesis, formula = spec$formula, fit = fit)
 }
