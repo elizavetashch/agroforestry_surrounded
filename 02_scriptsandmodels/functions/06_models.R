@@ -1,4 +1,4 @@
-random_terms <- "s(field, bs = \"re\") + s(crop_season, bs = \"re\") + s(year, bs = \"re\")"
+random_terms <- "s(field, bs = \"re\") + s(year, bs = \"re\") + s(key34, bs = \"re\")"
 dist_crop    <- "crop_unified + s(distance_to_tree_strip, k = 5, by = crop_unified)"
 dist_age     <- "ti(distance_to_tree_strip, treeage, k = c(5, 5))"
 swf_term     <- "s(R, by = SWF, k = 4)"
@@ -39,6 +39,12 @@ model_formulas <- function() {
 }
 
 fit_model <- function(data, spec) {
-  fit <- mgcv::gam(stats::as.formula(spec$formula), data = data, family = Gamma(link = "log"), method = "REML")
-  list(name = spec$name, hypothesis = spec$hypothesis, formula = spec$formula, fit = fit)
+  f <- stats::as.formula(spec$formula)
+  list(
+    name       = spec$name,
+    hypothesis = spec$hypothesis,
+    formula    = spec$formula,
+    fit_ml     = mgcv::gam(f, data = data, family = Gamma(link = "log"), method = "ML"),
+    fit        = mgcv::gam(f, data = data, family = Gamma(link = "log"), method = "REML")
+  )
 }

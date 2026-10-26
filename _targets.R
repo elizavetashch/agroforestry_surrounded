@@ -96,6 +96,7 @@ list(
   tar_target(zuur8, zuur_step8_independence(moddata, zuur$naive, zuur$random, zuur$order_by, zuur_dir), format = "file"),
   tar_target(zuur9, family_qq(moddata, "yield_tha", zuur_dir), format = "file"),
   tar_target(family_check, family_compare(gamdata, family_formula, model_dir), format = "file"),
+  tar_target(mean_sd_check, mean_sd_compare(moddata, zuur_dir), format = "file"),
   tar_target(add_season_croptype, season_croptype(moddata, zuur_dir), format = "file"), 
 
   # (3) modelling ----------------------------------------------------------------

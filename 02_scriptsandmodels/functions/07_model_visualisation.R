@@ -3,12 +3,16 @@ model_comparison <- function(models) {
     s <- summary(m$fit)
     data.frame(
       model = m$name, hypothesis = m$hypothesis, response = all.vars(m$fit$formula)[1],
-      n = s$n, df = attr(stats::logLik(m$fit), "df"), AIC = stats::AIC(m$fit),
-      r2_adj = s$r.sq, deviance_explained = s$dev.expl, formula = m$formula
+      n = s$n,
+      df_ML = attr(stats::logLik(m$fit_ml), "df"),
+      AIC_ML = stats::AIC(m$fit_ml),
+      r2_adj_REML = s$r.sq,
+      deviance_explained_REML = s$dev.expl,
+      formula = m$formula
     )
   })) |>
-    dplyr::mutate(delta_AIC = AIC - min(AIC), .after = AIC, .by = response) |>
-    dplyr::arrange(response, AIC)
+    dplyr::mutate(delta_AIC = AIC_ML - min(AIC_ML), .after = AIC_ML, .by = response) |>
+    dplyr::arrange(response, AIC_ML)
 }
 
 model_terms <- function(models) {

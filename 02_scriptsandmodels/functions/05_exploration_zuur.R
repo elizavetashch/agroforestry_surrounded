@@ -280,5 +280,17 @@ family_compare <- function(data, formula, dir) {
   }
   grDevices::dev.off()
   
-  c(save_table(tab, file.path(dir, "family_comparison_aic.csv")), f_png)
+  c(save_table(tab, file.path(dir, "step9_family_comparison_aic.csv")), f_png)
+}
+
+
+mean_sd_compare <- function(df, dir){
+    meansdtab <- 
+      df |> 
+      dplyr::summarise(n = dplyr::n(), 
+                     mean = mean(yield_tha), 
+                     sd = sd(yield_tha),
+                     cv = sd / mean, .by = crop_unified) |>
+    dplyr::arrange(mean)
+  save_table(meansdtab, file.path(dir, "step9_mean_sd_compare.csv"))
 }
