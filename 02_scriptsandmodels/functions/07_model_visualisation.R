@@ -48,13 +48,13 @@ save_model_figures <- function(models, dir) {
     graphics::par(mfrow = c(2, 2))
     utils::capture.output(mgcv::gam.check(m$fit, pch = 16, cex = 0.5))
     grDevices::dev.off()
-
+    
     f_smooth <- file.path(dir, paste0(m$name, "_smooths.png"))
     grDevices::png(f_smooth, width = 3000, height = 3000, res = 300)
     plot(m$fit, pages = 1, shade = TRUE, shade.col = "lightblue", seWithMean = TRUE,
          scale = 0, residuals = TRUE, pch = 16, cex = 0.3, col = "grey50")
     grDevices::dev.off()
-
+    
     c(f_check, f_smooth)
   }))
 }
@@ -75,29 +75,144 @@ plot_relative_yield <- function(moddata, file) {
   save_plot(p, file, 10, 7)
 }
 
-plot_distance_by_crop <- function(models, data, file, model = "m_01") {
-  m <- models[[which(vapply(models, `[[`, "", "name") == model)]]$fit
-  crops <- levels(data$crop_unified)
-  nd <- expand.grid(distance_to_tree_strip = seq(min(data$distance_to_tree_strip),
-                                                 max(data$distance_to_tree_strip), length.out = 100),
-                    crop_unified = crops)
-  for (v in intersect(c("key34", "field", "year", "crop_season"), names(data))) {
-    nd[[v]] <- data[[v]][!is.na(data[[v]])][1]
+# typical-value row: numeric covariates at their median, other columns from the first row
+typical_rows <- function(data, n) {
+  nd <- data[rep(1, n), ]
+  for (v in names(data)) {
+    if (is.numeric(data[[v]]) && !is.matrix(data[[v]])) nd[[v]] <- stats::median(data[[v]], na.rm = TRUE)
   }
-  ex <- grep("key34|field|year|crop_season", vapply(m$smooth, `[[`, "", "label"), value = TRUE)
-  pr <- stats::predict(m, nd, type = "link", se.fit = TRUE, exclude = ex)
-  nd$fit <- exp(pr$fit)
-  nd$lwr <- exp(pr$fit - 1.96 * pr$se.fit)
-  nd$upr <- exp(pr$fit + 1.96 * pr$se.fit)
+  nd
+}
+
+random_labels <- function(m) {
+  grep("key34|field|year|crop_season", vapply(m$smooth, `[[`, "", "label"), value = TRUE)
+}
+
+plot_distance_by_crop <- function(models, data, file, model = "m01c") {
+  m <- models[[which(vapply(models, `[[`, "", "name") == model)]]$fit
+  grid <- expand.grid(distance_to_tree_strip = seq(min(data$distance_to_tree_strip),
+                                                   max(data$distance_to_tree_strip), length.out = 100),
+                      crop_unified = levels(data$crop_unified))
+  nd <- typical_rows(data, nrow(grid))
+  nd$distance_to_tree_strip <- grid$distance_to_tree_strip
+  nd$crop_unified <- factor(grid$crop_unified, levels = levels(data$crop_unified))
+  pr <- stats::predict(m, nd, type = "link", se.fit = TRUE, exclude = random_labels(m))
+  grid$fit <- exp(pr$fit)
+  grid$lwr <- exp(pr$fit - 1.96 * pr$se.fit)
+  grid$upr <- exp(pr$fit + 1.96 * pr$se.fit)
   rng <- dplyr::summarise(data, lo = min(distance_to_tree_strip), hi = max(distance_to_tree_strip), .by = crop_unified)
-  nd <- dplyr::left_join(nd, rng, by = "crop_unified") |>
+  grid <- dplyr::left_join(grid, rng, by = "crop_unified") |>
     dplyr::filter(distance_to_tree_strip >= lo, distance_to_tree_strip <= hi)
-  p <- ggplot(nd, aes(distance_to_tree_strip, fit)) +
+  p <- ggplot(grid, aes(distance_to_tree_strip, fit)) +
     geom_ribbon(aes(ymin = lwr, ymax = upr), fill = "grey80") +
     geom_line() +
     facet_wrap(~ crop_unified, scales = "free_y") +
-    labs(x = "Distance to tree strip (m)", y = bquote("Predicted yield (t ha"^-1*"), " * .(model))) +
+    labs(x = "Distance to tree strip (m)",
+         y = bquote("Predicted yield (t ha"^-1*"), " * .(model) * ", other covariates at median")) +
     theme_bw()
   save_plot(p, file, 9, 6)
 }
 
+plot_aic <- function(models, file) {
+  d <- model_comparison(models) |>
+    dplyr::mutate(model = factor(model, levels = rev(vapply(models, `[[`, "", "name"))),
+                  hypothesis_group = dplyr::case_when(
+                    model == "m01d"              ~ "SWF functional effect",
+                    grepl("^m00|^m01", model)    ~ "H1: in-field heterogeneity",
+                    .default                     = "H2: beyond x in-field interaction"))
+  p <- ggplot(d, aes(delta_AIC, model, fill = hypothesis_group)) +
+    geom_col() +
+    geom_vline(xintercept = 2, linetype = "dashed", colour = "grey40") +
+    labs(x = expression(Delta * "AIC (ML) relative to the best model"), y = NULL, fill = NULL) +
+    theme_bw() +
+    theme(legend.position = "bottom")
+  save_plot(p, file, 7, 4.5)
+}
+
+# functional SWF effect beta(r): weight of woody features in each 100 m ring
+plot_swf_function <- function(models, data, file, model = "m01d") {
+  m <- models[[which(vapply(models, `[[`, "", "name") == model)]]$fit
+  r <- seq(min(data$R), max(data$R), length.out = 100)
+  nd <- typical_rows(data, length(r))
+  nd$R <- matrix(r, ncol = 1)
+  nd$SWF <- matrix(1, nrow = length(r), ncol = 1)
+  X <- stats::predict(m, nd, type = "lpmatrix")
+  sm <- m$smooth[[which(vapply(m$smooth, `[[`, "", "label") == "s(R):SWF")]]
+  cols <- sm$first.para:sm$last.para
+  d <- data.frame(r = r, beta = drop(X[, cols] %*% stats::coef(m)[cols]),
+                  se = sqrt(rowSums((X[, cols] %*% m$Vp[cols, cols]) * X[, cols])))
+  p <- ggplot(d, aes(r, beta)) +
+    geom_ribbon(aes(ymin = beta - 1.96 * se, ymax = beta + 1.96 * se), fill = "grey80") +
+    geom_line() +
+    geom_hline(yintercept = 0, linetype = "dashed", colour = "grey40") +
+    labs(x = "Distance of ring from field boundary (m)",
+         y = expression(beta(r) ~ "(effect of woody share on log yield)")) +
+    theme_bw()
+  save_plot(p, file, 7, 4.5)
+}
+
+# H2 -------------------------------------------------------------------------
+
+plot_heterogeneity_space <- function(moddata, beyond, infield, file) {
+  d <- dplyr::distinct(moddata, field, year, .data[[beyond]], .data[[infield]])
+  p <- ggplot(d, aes(.data[[beyond]], .data[[infield]], colour = field)) +
+    geom_point(size = 3) +
+    labs(x = paste("Beyond-field heterogeneity:", beyond),
+         y = paste("In-field complexity:", infield), colour = "Site") +
+    theme_bw()
+  save_plot(p, file, 7, 5)
+}
+
+plot_interaction_raw <- function(moddata, beyond, infield, file) {
+  d <- moddata |>
+    dplyr::mutate(yield_crop = yield_tha / mean(yield_tha), .by = crop_unified) |>
+    dplyr::summarise(yield_crop = mean(yield_crop),
+                     .by = c(field, year, crop_unified, dplyr::all_of(c(beyond, infield)))) |>
+    dplyr::mutate(infield_class = ifelse(.data[[infield]] > stats::median(.data[[infield]]),
+                                         "high in-field complexity", "low in-field complexity"))
+  p <- ggplot(d, aes(.data[[beyond]], yield_crop, colour = infield_class)) +
+    geom_hline(yintercept = 1, linetype = "dashed", colour = "grey50") +
+    geom_point(alpha = 0.7) +
+    geom_smooth(method = "lm", formula = y ~ poly(x, 2), se = TRUE) +
+    labs(x = paste("Beyond-field heterogeneity:", beyond),
+         y = "Yield relative to crop mean (field x year x crop means)", colour = NULL) +
+    theme_bw() +
+    theme(legend.position = "bottom")
+  save_plot(p, file, 7, 5)
+}
+
+plot_interaction_model <- function(models, data, beyond, infield, file, model = "m02d") {
+  m <- models[[which(vapply(models, `[[`, "", "name") == model)]]$fit
+  q <- stats::quantile(data[[infield]], c(0.1, 0.5, 0.9), na.rm = TRUE)
+  grid <- expand.grid(b = seq(min(data[[beyond]]), max(data[[beyond]]), length.out = 100), i = q)
+  nd <- typical_rows(data, nrow(grid))
+  nd[[beyond]] <- grid$b
+  nd[[infield]] <- grid$i
+  X <- stats::predict(m, nd, type = "lpmatrix")
+  labs_s <- vapply(m$smooth, `[[`, "", "label")
+  keep <- labs_s[grepl(beyond, labs_s, fixed = TRUE) | labs_s == paste0("s(", infield, ")")]
+  cols <- unlist(lapply(m$smooth[labs_s %in% keep], function(s) s$first.para:s$last.para))
+  eta <- drop(X[, cols] %*% stats::coef(m)[cols])
+  se <- sqrt(rowSums((X[, cols] %*% m$Vp[cols, cols]) * X[, cols]))
+  grid$level <- factor(grid$i, labels = c("low (10th percentile)", "median", "high (90th percentile)"))
+  grid$fit <- exp(eta)
+  grid$lwr <- exp(eta - 1.96 * se)
+  grid$upr <- exp(eta + 1.96 * se)
+  peaks <- dplyr::slice_max(grid, fit, n = 1, by = level)
+  p <- ggplot(grid, aes(b, fit, colour = level, fill = level)) +
+    geom_ribbon(aes(ymin = lwr, ymax = upr), alpha = 0.15, colour = NA) +
+    geom_line(linewidth = 1) +
+    geom_point(data = peaks, size = 3, shape = 21, colour = "black") +
+    geom_rug(data = data.frame(b = unique(data[[beyond]])), aes(b), inherit.aes = FALSE) +
+    labs(x = paste("Beyond-field heterogeneity:", beyond), y = paste("Multiplicative effect on yield,", model),
+         colour = "In-field complexity", fill = "In-field complexity") +
+    theme_bw() +
+    theme(legend.position = "bottom")
+  save_plot(p, file, 7, 5)
+}
+
+significantterms <- function(models){
+  df <- model_terms(models)
+  df |> 
+    dplyr::filter()
+}

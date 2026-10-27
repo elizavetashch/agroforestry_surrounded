@@ -17,11 +17,13 @@ zuur <- list(
   random = c("field", "year"),
   groups       = c("field", "year", "crop_unified", "crop_season", "distance_to_tree_strip"),
   covariates   = c("distance_to_tree_strip", "treeage", "AFage", "l_shdi", "l_contag", "l_ed",
-                   "mean_slope", "prop_swf_within", "PC1_c", "PC1_s"),
+                   "mean_slope", "prop_swf_within", "swf_beyond", "PC1_c", "PC1_s"),
   condition    = "crop_season",
   interactions = c("crop_unified", "crop_season"),
   order_by     = c("field", "plot", "year")
 )
+
+infield_var <- "prop_swf_within"
 
 family_formula <- "yield_tha ~ crop_unified + s(distance_to_tree_strip, k = 5, by = crop_unified) + s(field, bs = \"re\") + s(year, bs = \"re\")"
 
@@ -47,7 +49,7 @@ list(
   tar_target(f_lulc, list.files(path_in("lulc"), "\\.tif$", recursive = TRUE, full.names = TRUE), format = "file"),
   tar_target(f_swf, list.files(path_in("swf"), "\\.tif$", recursive = TRUE, full.names = TRUE), format = "file"),
   tar_target(f_soil, list.files(path_in("soilgrids"), "\\.tif$", full.names = TRUE), format = "file"),
-
+  
   # (1) data preparation: single fields (row numbers from the original scripts)
   tar_target(signal16, prep_signal16(f_signal16) |> check_nrow(120, "signal16")),
   tar_target(wendhausen, prep_wendhausen(signal16, f_wendhausen) |> check_field_data(140, "wendhausen")),
@@ -58,14 +60,14 @@ list(
   tar_target(forst, prep_forst(signal16, f_forst) |> check_field_data(80, "forst")),
   tar_target(gladbacherhof, prep_gladbacherhof(f_gladbacherhof) |> check_field_data(144, "gladbacherhof")),
   tar_target(koch, prep_koch(f_koch) |> check_field_data(451, "koch")),
-
+  
   # (1) data preparation: merge and add site variables
   tar_target(merged,
-    merge_fields(list(wendhausen, dornburg, vechta, reiffenhausen, mariensee, forst, gladbacherhof, koch),
-                 f_fieldpolygons, f_fertilization) |>
-      check_unique("id", "merged") |>
-      check_no_na(c("yield_tha", "crop_unified", "latitude", "longitude", "treeage"), "merged") |>
-      check_no_na(c("gs_start_date", "gs_end_date"), "merged", warn = TRUE)
+             merge_fields(list(wendhausen, dornburg, vechta, reiffenhausen, mariensee, forst, gladbacherhof, koch),
+                          f_fieldpolygons, f_fertilization) |>
+               check_unique("id", "merged") |>
+               check_no_na(c("yield_tha", "crop_unified", "latitude", "longitude", "treeage"), "merged") |>
+               check_no_na(c("gs_start_date", "gs_end_date"), "merged", warn = TRUE)
   ),
   tar_target(field_coords, distinct(merged, field, latitude, longitude) |> check_unique("field", "field_coords")),
   tar_target(climate, extract_climate(field_coords, 2015:2023, path_in("dwd"))),
@@ -83,7 +85,7 @@ list(
   tar_target(moddata, make_moddata(dffinal, swf, clim_vars, soil_vars) |> check_moddata()),
   tar_target(moddata_csv, save_table(moddata, path_out("moddata.csv")), format = "file"),
   tar_target(pca_files, pca_tables(moddata, clim_vars, soil_vars, res_dir("01_dataprep")), format = "file"),
-
+  
   # (2) data exploration after Zuur et al. 2010 --------------------------------
   tar_target(zuur_dir, res_dir("02_exploration_zuur")),
   tar_target(zuur1, zuur_step1_outliers(moddata, zuur$y, zuur$covariates, zuur_dir), format = "file"),
@@ -98,16 +100,31 @@ list(
   tar_target(family_check, family_compare(gamdata, family_formula, model_dir), format = "file"),
   tar_target(mean_sd_check, mean_sd_compare(moddata, zuur_dir), format = "file"),
   tar_target(add_season_croptype, season_croptype(moddata, zuur_dir), format = "file"), 
-
+  
   # (3) modelling ----------------------------------------------------------------
   tar_target(gamdata, add_swf_matrix(moddata)),
   tar_target(model_spec, model_formulas()),
   tar_target(models, fit_model(gamdata, model_spec), pattern = map(model_spec), iteration = "list"),
-
+  
   # (4) model results visualisation -------------------------------------------
   tar_target(model_dir, res_dir("03_models")),
   tar_target(model_tables, save_model_tables(models, model_dir), format = "file"),
   tar_target(model_figures, save_model_figures(models, model_dir), format = "file"),
-  tar_target(fig_relative_yield, plot_relative_yield(moddata, file.path(model_dir, "relative_yield_distance.png")), format = "file"),
-  tar_target(fig_distance_crop, plot_distance_by_crop(models, gamdata, file.path(model_dir, "m_01_distance_by_crop.png")), format = "file")
+  tar_target(fig_relative_yield, plot_relative_yield(moddata, file.path(model_dir, "yield_distance.png")), format = "file"),
+  tar_target(fig_aic, plot_aic(models, file.path(model_dir, "aic_h1_h2.png")), format = "file"),
+  tar_target(fig_swf_function, plot_swf_function(models, gamdata, file.path(model_dir, "m01d_swf_function.png")), format = "file"),
+  tar_target(fig_distance_crop, plot_distance_by_crop(models, gamdata, file.path(model_dir, "m01c_distance_by_crop.png")), format = "file"),
+  tar_target(fig_h2_space_swf, plot_heterogeneity_space(moddata, "swf_beyond", infield_var,
+                                                        file.path(model_dir, "h2_space_swf.png")), format = "file"),
+  tar_target(fig_h2_space_shdi, plot_heterogeneity_space(moddata, "l_shdi", infield_var,
+                                                         file.path(model_dir, "h2_space_shdi.png")), format = "file"),
+  tar_target(fig_h2_raw_swf, plot_interaction_raw(moddata, "swf_beyond", infield_var,
+                                                  file.path(model_dir, "h2_raw_swf.png")), format = "file"),
+  tar_target(fig_h2_raw_shdi, plot_interaction_raw(moddata, "l_shdi", infield_var,
+                                                   file.path(model_dir, "h2_raw_shdi.png")), format = "file"),
+  tar_target(fig_h2_model_swf, plot_interaction_model(models, gamdata, "swf_beyond", infield_var,
+                                                      file.path(model_dir, "h2_model_swf.png")), format = "file"),
+  tar_target(fig_h2_model_shdi, plot_interaction_model(models, gamdata, "l_shdi", infield_var,
+                                                       file.path(model_dir, "h2_model_shdi.png")), format = "file")
+  
 )

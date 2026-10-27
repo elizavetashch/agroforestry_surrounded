@@ -33,13 +33,14 @@ make_moddata <- function(df, swf, clim_vars, soil_vars) {
   const_vars <- c("AFage", "treeage", "l_shdi", "l_ed", "l_np", "l_contag", "mean_slope",
                   "prop_swf_within", "sowing_month", "harvest_month")
   swf_cols <- grep("^swf_d", names(swf), value = TRUE)
-
+  
   d <- df |>
     dplyr::mutate(swf_year = swf_reference_year(year)) |>
     dplyr::left_join(swf, by = c("field", "swf_year"), relationship = "many-to-one") |>
     dplyr::select(plot, dplyr::all_of(c(keys140, clim_vars, soil_vars, const_vars)),
                   swf_year, dplyr::all_of(swf_cols), yield_tha) |>
     dplyr::distinct() |>
+    dplyr::mutate(swf_beyond = rowMeans(dplyr::across(dplyr::all_of(swf_cols)))) |>
     dplyr::mutate(
       crop_season = dplyr::case_when(
         sowing_month %in% c("Sep", "Oct", "Nov", "Dec", "Jan") ~ "winter",
@@ -50,21 +51,21 @@ make_moddata <- function(df, swf, clim_vars, soil_vars) {
       key140     = paste(key34, distance_to_tree_strip, sep = "_")
     ) |>
     dplyr::mutate(key140_mean = mean(yield_tha), n_cell = dplyr::n(), .by = key140)
-
+  
   key34_ref <- d |>
     dplyr::distinct(key34, key140, key140_mean) |>
     dplyr::summarise(key34_mean = mean(key140_mean), .by = key34)
-
+  
   d <- d |>
     dplyr::left_join(key34_ref, by = "key34") |>
     dplyr::mutate(yield_rel = yield_tha / key34_mean, key140_rel = key140_mean / key34_mean) |>
     dplyr::mutate(dist_rel = distance_to_tree_strip / max(distance_to_tree_strip), .by = field_year)
-
+  
   clim_units <- dplyr::distinct(d, dplyr::across(dplyr::all_of(c("key34", clim_vars))))
   soil_units <- dplyr::distinct(d, dplyr::across(dplyr::all_of(c("key34", soil_vars))))
   clim_units$PC1_c <- first_pc(clim_units, clim_vars)$x[, 1]
   soil_units$PC1_s <- first_pc(soil_units, soil_vars)$x[, 1]
-
+  
   n <- nrow(d)
   d <- d |>
     dplyr::left_join(dplyr::select(clim_units, key34, PC1_c), by = "key34") |>
