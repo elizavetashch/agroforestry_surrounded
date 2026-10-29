@@ -28,6 +28,76 @@ model_terms <- function(models) {
   }))
 }
 
+
+# readable names for model terms -----------------------------------------------
+
+term_labels <- c(
+  "treeage" = "Tree age", "AFage" = "Agroforestry system age", "PC1_c" = "PC1 climate",
+  "PC1_s" = "PC1 soil", "l_contag" = "Contagion", "l_ed" = "Edge density",
+  "s(swf_beyond)" = "SWF mean", "s(l_shdi)" = "Shannon diversity",
+  "s(prop_swf_within)" = "In-field complexity", "s(R):SWF" = "SWF rings (functional)",
+  "s(distance_to_tree_strip)" = "Distance", "ti(distance_to_tree_strip,treeage)" = "Distance x tree age",
+  "ti(swf_beyond,prop_swf_within)" = "SWF mean x in-field complexity",
+  "ti(l_shdi,prop_swf_within)" = "Shannon x in-field complexity", "s(key34)" = "Random: field x year x crop"
+)
+
+nice_term <- function(x) {
+  out <- ifelse(x %in% names(term_labels), term_labels[x], x)
+  out <- sub("^crop_unified", "Crop: ", out)
+  out <- sub("^s\\(distance_to_tree_strip\\):crop_unified", "Distance: ", out)
+  unname(out)
+}
+
+sig_class <- function(p) {
+  cut(p, c(-Inf, 0.001, 0.01, 0.05, Inf), labels = c("p < 0.001", "p < 0.01", "p < 0.05", "n.s."))
+}
+
+# parametric effects of all models as % change in yield with 95% CI -----------
+plot_coef_forest <- function(models, file) {
+  lv <- vapply(models, `[[`, "", "name")
+  d <- model_terms(models) |>
+    dplyr::filter(type == "parametric", term != "(Intercept)") |>
+    dplyr::mutate(
+      effect = 100 * (exp(estimate) - 1),
+      lwr = 100 * (exp(estimate - 1.96 * se) - 1),
+      upr = 100 * (exp(estimate + 1.96 * se) - 1),
+      significant = ifelse(p_value < 0.05, "p < 0.05", "n.s."),
+      term = nice_term(term),
+      model = factor(model, levels = rev(lv))
+    )
+  p <- ggplot(d, aes(effect, model, colour = significant)) +
+    geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
+    geom_errorbarh(aes(xmin = lwr, xmax = upr), height = 0.2) +
+    geom_point(size = 2) +
+    facet_wrap(~ term, scales = "free_x") +
+    scale_colour_manual(values = c("p < 0.05" = "black", "n.s." = "grey65")) +
+    labs(x = "Effect on yield (%) with 95% CI", y = NULL, colour = NULL) +
+    theme_bw(base_size = 11) +
+    theme(legend.position = "bottom")
+  save_plot(p, file, 12, 9)
+}
+
+# smooth terms of all models: significance and edf ---------------------------
+plot_smooth_heatmap <- function(models, file) {
+  lv <- vapply(models, `[[`, "", "name")
+  d <- model_terms(models) |>
+    dplyr::filter(type == "smooth") |>
+    dplyr::mutate(term = nice_term(term), significance = sig_class(p_value),
+                  model = factor(model, levels = lv))
+  order_terms <- unique(d$term)
+  order_terms <- rev(c(setdiff(order_terms, "Random: field x year x crop"), "Random: field x year x crop"))
+  d$term <- factor(d$term, levels = order_terms)
+  p <- ggplot(d, aes(model, term, fill = significance)) +
+    geom_tile(colour = "white") +
+    geom_text(aes(label = sprintf("%.1f", edf)), size = 3) +
+    scale_fill_manual(values = c("p < 0.001" = "grey25", "p < 0.01" = "grey50",
+                                 "p < 0.05" = "grey75", "n.s." = "grey95"), drop = FALSE) +
+    labs(x = NULL, y = NULL, fill = NULL, caption = "Numbers = effective degrees of freedom (1 = linear)") +
+    theme_bw(base_size = 11) +
+    theme(legend.position = "bottom", panel.grid = element_blank())
+  save_plot(p, file, 9, 7)
+}
+
 model_kcheck <- function(models) {
   dplyr::bind_rows(lapply(models, function(m) {
     k <- mgcv::k.check(m$fit)

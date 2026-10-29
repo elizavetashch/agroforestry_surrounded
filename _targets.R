@@ -125,6 +125,8 @@ list(
   tar_target(fig_h2_model_swf, plot_interaction_model(models, gamdata, "swf_beyond", infield_var,
                                                       file.path(model_dir, "h2_model_swf.png")), format = "file"),
   tar_target(fig_h2_model_shdi, plot_interaction_model(models, gamdata, "l_shdi", infield_var,
-                                                       file.path(model_dir, "h2_model_shdi.png")), format = "file")
+                                                       file.path(model_dir, "h2_model_shdi.png")), format = "file"),
+  tar_target(fig_coef_forest, plot_coef_forest(models, file.path(model_dir, "effects_parametric_all_models.png")), format = "file"),
+  tar_target(fig_smooth_heatmap, plot_smooth_heatmap(models, file.path(model_dir, "effects_smooth_all_models.png")), format = "file")
   
 )

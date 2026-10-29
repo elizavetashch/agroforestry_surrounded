@@ -23,7 +23,6 @@ model_formulas <- function() {
     m01  = list(h = "H1: + distance to tree strip", keys = c(h1, "dist")),
     m01b = list(h = "H1: + distance to tree strip by crop", keys = c(h1, "dist_crop")),
     m01c = list(h = "H1: + distance by crop + distance x tree age", keys = c(h1, "dist_crop", "dist_age")),
-    m01cc = list(h = "H1: + distance by crop + distance x tree age", keys = c(h1, "dist_crop", "dist_age", "infield")),
     m01d = list(h = "SWF: m01c with the ring-resolved (functional) SWF effect instead of mean SWF",
                 keys = c("crop", "site", "beyond_fn", "dist_crop", "dist_age")),
     m02  = list(h = "H2 baseline: m01c + in-field complexity, no interaction", keys = h2),
