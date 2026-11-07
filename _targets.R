@@ -100,6 +100,7 @@ list(
   tar_target(family_check, family_compare(gamdata, family_formula, model_dir), format = "file"),
   tar_target(mean_sd_check, mean_sd_compare(moddata, zuur_dir), format = "file"),
   tar_target(add_season_croptype, season_croptype(moddata, zuur_dir), format = "file"), 
+  tar_target(site_map, plot_site_map(moddata, dffinal, file.path(zuur_dir, "GermanMap.png")), format = "file"),
   
   # (3) modelling ----------------------------------------------------------------
   tar_target(gamdata, add_swf_matrix(moddata)),
@@ -127,6 +128,7 @@ list(
   tar_target(fig_h2_model_shdi, plot_interaction_model(models, gamdata, "l_shdi", infield_var,
                                                        file.path(model_dir, "h2_model_shdi.png")), format = "file"),
   tar_target(fig_coef_forest, plot_coef_forest(models, file.path(model_dir, "effects_parametric_all_models.png")), format = "file"),
-  tar_target(fig_smooth_heatmap, plot_smooth_heatmap(models, file.path(model_dir, "effects_smooth_all_models.png")), format = "file")
-  
+  tar_target(fig_smooth_heatmap, plot_smooth_heatmap(models, file.path(model_dir, "effects_smooth_all_models.png")), format = "file"),
+  tar_target(fig_swf_profiles, plot_swf_profiles(swf, file.path(model_dir, "swf_profiles_by_field.png")), format = "file"),
+  tar_target(fig_yield_by_field, plot_yield_by_field(moddata, file.path(model_dir, "yield_distance_by_field.png")), format = "file")
 )

@@ -294,3 +294,30 @@ mean_sd_compare <- function(df, dir){
     dplyr::arrange(mean)
   save_table(meansdtab, file.path(dir, "step9_mean_sd_compare.csv"))
 }
+
+
+# (3) German map visualisation  -------------------------------------------
+
+# map of the study sites, point size = number of observations
+plot_site_map <- function(moddata, dffinal, file) {
+  coords <- dffinal |>
+    dplyr::summarise(lat = mean(lat, na.rm = TRUE), lon = mean(lon, na.rm = TRUE), .by = field)
+  d <- moddata |>
+    dplyr::mutate(field = as.character(field)) |>
+    dplyr::count(field) |>
+    dplyr::left_join(coords, by = "field")
+  germany <- ggplot2::map_data("world", region = "Germany")
+  
+  p <- ggplot() +
+    geom_polygon(data = germany, aes(long, lat, group = group),
+                 fill = "white", colour = "grey30", linewidth = 0.4) +
+    geom_point(data = d, aes(lon, lat, size = n), colour = "#A2BD81", alpha = 0.7) +
+    geom_text(data = d, aes(lon + 0.35, lat, label = paste0(field, " (n = ", n, ")")),
+              hjust = 0, size = 4.5) +
+    scale_size(range = c(2, 9)) +
+    coord_quickmap(xlim = c(5.8, 17.5)) +
+    theme_void() +
+    theme(legend.position = "none",
+          plot.background = element_rect(fill = "white", colour = NA))
+  save_plot(p, file, 7, 7.5)
+}

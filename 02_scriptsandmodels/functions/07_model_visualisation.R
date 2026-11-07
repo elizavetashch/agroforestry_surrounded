@@ -141,9 +141,12 @@ plot_relative_yield <- function(moddata, file) {
     facet_wrap(~ crop_unified, scales = "free_y") +
     labs(x = "Distance to tree strip (m)", y = expression(Yield~(t~ha^-1)), colour = "Site") +
     theme_bw(base_size = 12) +
-    theme(legend.position = "bottom")
+    theme(legend.position = "bottom",
+          strip.background = element_rect(fill = "#EEF3E8", colour = "grey30"),
+          strip.text = element_text(size = 18))
   save_plot(p, file, 10, 7)
 }
+
 
 # typical-value row: numeric covariates at their median, other columns from the first row
 typical_rows <- function(data, n) {
@@ -285,4 +288,57 @@ significantterms <- function(models){
   df <- model_terms(models)
   df |> 
     dplyr::filter()
+}
+
+
+# SWF profile around each field: rings 100-1000 m, in-field share plotted at "within field" --------
+
+plot_swf_profiles <- function(swf, file) {
+  rings <- swf |>
+    tidyr::pivot_longer(dplyr::starts_with("swf_d"), names_to = "ring", values_to = "prop") |>
+    dplyr::mutate(distance = as.numeric(sub("swf_d", "", ring)))
+  within <- dplyr::mutate(swf, distance = 0, prop = prop_swf_within)
+  p <- ggplot(rings, aes(distance, prop, colour = factor(swf_year))) +
+    geom_vline(xintercept = 50, linetype = "dotted", colour = "grey50") +
+    geom_line(linewidth = 0.8) +
+    geom_point(size = 1.5) +
+    geom_point(data = within, shape = 17, size = 3.5) +
+    facet_wrap(~ field, ncol = 4) +
+    scale_x_continuous(breaks = c(0, seq(200, 1000, 200)),
+                       labels = c("within\nfield", seq(200, 1000, 200))) +
+    scale_colour_manual(values = c("2015" = "#a1d99b", "2018" = "#41ab5d", "2021" = "#00441b")) +
+    labs(x = "Distance from field boundary (m)", y = "Proportion of small woody features",
+         colour = "SWF reference year") +
+    theme_bw(base_size = 12) +
+    theme(legend.position = "bottom",
+          strip.background = element_rect(fill = "#a1d99b", colour = "grey30"),
+          strip.text = element_text(size = 14))
+  save_plot(p, file, 12, 6.5)
+}
+
+
+
+# yield along the distance gradient per field: colour = crop, line --------
+# the in-field SWF share is given in the panel title
+plot_yield_by_field <- function(moddata, file) {
+  infield <- moddata |>
+    dplyr::summarise(lo = min(prop_swf_within), hi = max(prop_swf_within), .by = field) |>
+    dplyr::mutate(title = ifelse(abs(hi - lo) < 0.005,
+                                 sprintf("%s\nin-field SWF = %.2f", field, lo),
+                                 sprintf("%s\nin-field SWF = %.2f-%.2f", field, lo, hi)))
+  d <- moddata |>
+    dplyr::summarise(yield = mean(yield_tha), .by = c(field, year, crop_unified, distance_to_tree_strip)) |>
+    dplyr::left_join(dplyr::select(infield, field, title), by = "field")
+  p <- ggplot(d, aes(distance_to_tree_strip, yield, colour = crop_unified, linetype = factor(year),
+                     group = interaction(year, crop_unified))) +
+    geom_line(linewidth = 0.7) +
+    geom_point(size = 1.5) +
+    facet_wrap(~ title, ncol = 4, scales = "free_y") +
+    labs(x = "Distance to tree strip (m)", y = expression(Yield~(t~ha^-1)),
+         colour = "Crop", linetype = "Year") +
+    theme_bw(base_size = 12) +
+    theme(legend.position = "right", legend.key.width = grid::unit(1.5, "cm"),
+          strip.background = element_rect(fill = "#a1d99b", colour = "grey30"),
+          strip.text = element_text(size = 12))
+  save_plot(p, file, 14, 8)
 }
