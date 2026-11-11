@@ -59,7 +59,8 @@ make_moddata <- function(df, swf, clim_vars, soil_vars) {
   d <- d |>
     dplyr::left_join(key34_ref, by = "key34") |>
     dplyr::mutate(yield_rel = yield_tha / key34_mean, key140_rel = key140_mean / key34_mean) |>
-    dplyr::mutate(dist_rel = distance_to_tree_strip / max(distance_to_tree_strip), .by = field_year)
+    dplyr::mutate(dist_rel = distance_to_tree_strip / max(distance_to_tree_strip), .by = field_year) |>
+    dplyr::mutate(yield_rel_crop = yield_tha / max(yield_tha), .by = crop_unified)
   
   clim_units <- dplyr::distinct(d, dplyr::across(dplyr::all_of(c("key34", clim_vars))))
   soil_units <- dplyr::distinct(d, dplyr::across(dplyr::all_of(c("key34", soil_vars))))

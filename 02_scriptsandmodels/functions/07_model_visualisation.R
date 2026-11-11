@@ -67,14 +67,18 @@ plot_coef_forest <- function(models, file) {
     )
   p <- ggplot(d, aes(effect, model, colour = significant)) +
     geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
-    geom_errorbarh(aes(xmin = lwr, xmax = upr), height = 0.2) +
+    geom_errorbar(aes(xmin = lwr, xmax = upr), width = 0.2, orientation = "y") +
     geom_point(size = 2) +
-    facet_wrap(~ term, scales = "free_x") +
+    facet_wrap(~ term, scales = "free_x", ncol = 2) +
     scale_colour_manual(values = c("p < 0.05" = "black", "n.s." = "grey65")) +
     labs(x = "Effect on yield (%) with 95% CI", y = NULL, colour = NULL) +
     theme_bw(base_size = 11) +
-    theme(legend.position = "bottom")
-  save_plot(p, file, 12, 9)
+    theme(
+      legend.position = "bottom",
+      strip.text = element_text(size = 18)
+    )
+  print(p)  # shows it in the plot pane when run interactively
+  save_plot(p, file, 6, 18)
 }
 
 # smooth terms of all models: significance and edf ---------------------------
@@ -129,17 +133,18 @@ save_model_figures <- function(models, dir) {
   }))
 }
 
-plot_relative_yield <- function(moddata, file) {
+plot_relative_yield <- function(moddata, file, y = "yield_tha", ylab = "Yield (t/ha)") {
+  moddata$yield_plot <- moddata[[y]]
   means <- moddata |>
-    dplyr::summarise(yield_tha = mean(yield_tha, na.rm = TRUE),
+    dplyr::summarise(yield_plot = mean(yield_plot, na.rm = TRUE),
                      .by = c(field, year, crop_unified, distance_to_tree_strip))
-  p <- ggplot(moddata, aes(distance_to_tree_strip, yield_tha)) +
+  p <- ggplot(moddata, aes(distance_to_tree_strip, yield_plot)) +
     geom_jitter(aes(colour = field), width = 0.3, height = 0, alpha = 0.25, size = 1.2) +
     geom_line(data = means, aes(group = interaction(field, year), colour = field),
               alpha = 0.6, linewidth = 0.4) +
     stat_summary(fun.data = mean_se, geom = "pointrange", colour = "black", size = 0.3) +
     facet_wrap(~ crop_unified, scales = "free_y") +
-    labs(x = "Distance to tree strip (m)", y = expression(Yield~(t~ha^-1)), colour = "Site") +
+        labs(x = "Distance to tree strip (m)", y = ylab, colour = "Site") +
     theme_bw(base_size = 12) +
     theme(legend.position = "bottom",
           strip.background = element_rect(fill = "#EEF3E8", colour = "grey30"),
@@ -161,7 +166,7 @@ random_labels <- function(m) {
   grep("key34|field|year|crop_season", vapply(m$smooth, `[[`, "", "label"), value = TRUE)
 }
 
-plot_distance_by_crop <- function(models, data, file, model = "m01c") {
+plot_distance_by_crop <- function(models, data, file, model = "m01c", ylab = "Predicted yield (t/ha)") {
   m <- models[[which(vapply(models, `[[`, "", "name") == model)]]$fit
   grid <- expand.grid(distance_to_tree_strip = seq(min(data$distance_to_tree_strip),
                                                    max(data$distance_to_tree_strip), length.out = 100),
@@ -180,8 +185,7 @@ plot_distance_by_crop <- function(models, data, file, model = "m01c") {
     geom_ribbon(aes(ymin = lwr, ymax = upr), fill = "grey80") +
     geom_line() +
     facet_wrap(~ crop_unified, scales = "free_y") +
-    labs(x = "Distance to tree strip (m)",
-         y = bquote("Predicted yield (t ha"^-1*"), " * .(model) * ", other covariates at median")) +
+    labs(x = "Distance to tree strip (m)", y = paste0(ylab, ", ", model, ", other covariates at median")) +
     theme_bw()
   save_plot(p, file, 9, 6)
 }
@@ -303,7 +307,7 @@ plot_swf_profiles <- function(swf, file) {
     geom_line(linewidth = 0.8) +
     geom_point(size = 1.5) +
     geom_point(data = within, shape = 17, size = 3.5) +
-    facet_wrap(~ field, ncol = 4) +
+    facet_wrap(~ field, ncol = 1) +
     scale_x_continuous(breaks = c(0, seq(200, 1000, 200)),
                        labels = c("within\nfield", seq(200, 1000, 200))) +
     scale_colour_manual(values = c("2015" = "#a1d99b", "2018" = "#41ab5d", "2021" = "#00441b")) +
@@ -313,32 +317,38 @@ plot_swf_profiles <- function(swf, file) {
     theme(legend.position = "bottom",
           strip.background = element_rect(fill = "#a1d99b", colour = "grey30"),
           strip.text = element_text(size = 14))
-  save_plot(p, file, 12, 6.5)
+  save_plot(p, file, 4, 12)
 }
 
 
 
 # yield along the distance gradient per field: colour = crop, line --------
-# the in-field SWF share is given in the panel title
-plot_yield_by_field <- function(moddata, file) {
+plot_yield_by_field <- function(moddata, file, y = "yield_tha", ylab = "Yield (t/ha)") {
   infield <- moddata |>
     dplyr::summarise(lo = min(prop_swf_within), hi = max(prop_swf_within), .by = field) |>
     dplyr::mutate(title = ifelse(abs(hi - lo) < 0.005,
                                  sprintf("%s\nin-field SWF = %.2f", field, lo),
                                  sprintf("%s\nin-field SWF = %.2f-%.2f", field, lo, hi)))
+  
   d <- moddata |>
-    dplyr::summarise(yield = mean(yield_tha), .by = c(field, year, crop_unified, distance_to_tree_strip)) |>
+    dplyr::summarise(yield = mean(.data[[y]]), .by = c(field, year, crop_unified, distance_to_tree_strip)) |>
     dplyr::left_join(dplyr::select(infield, field, title), by = "field")
-  p <- ggplot(d, aes(distance_to_tree_strip, yield, colour = crop_unified, linetype = factor(year),
-                     group = interaction(year, crop_unified))) +
+  
+  p <- ggplot(d, aes(distance_to_tree_strip, yield,
+                     colour   = crop_unified,
+                     linetype = factor(year),
+                     shape    = factor(year),
+                     group    = interaction(year, crop_unified))) +
+    scale_shape_manual(values = c(16, 17, 15, 18, 1, 2, 0, 5)) +
     geom_line(linewidth = 0.7) +
-    geom_point(size = 1.5) +
+    geom_point(size = 2) +
     facet_wrap(~ title, ncol = 4, scales = "free_y") +
-    labs(x = "Distance to tree strip (m)", y = expression(Yield~(t~ha^-1)),
-         colour = "Crop", linetype = "Year") +
+    labs(x = "Distance to tree strip (m)", y = ylab, colour = "Crop", linetype = "Year") +
     theme_bw(base_size = 12) +
-    theme(legend.position = "right", legend.key.width = grid::unit(1.5, "cm"),
+    theme(legend.position = "right",
+          legend.key.width = grid::unit(1.5, "cm"),
           strip.background = element_rect(fill = "#a1d99b", colour = "grey30"),
           strip.text = element_text(size = 12))
+  
   save_plot(p, file, 14, 8)
 }

@@ -321,3 +321,28 @@ plot_site_map <- function(moddata, dffinal, file) {
           plot.background = element_rect(fill = "white", colour = NA))
   save_plot(p, file, 7, 7.5)
 }
+
+
+# (4) Add crop season without maize ---------------------------------------
+
+# yield of summer vs winter crops, maize excluded
+plot_season_yield <- function(moddata, dir, exclude = "maize") {
+  d <- moddata |>
+    dplyr::filter(!crop_unified %in% exclude, !is.na(crop_season)) |>
+    dplyr::mutate(crop_unified = droplevels(crop_unified))
+  n_lab <- dplyr::count(d, crop_season)
+  p <- ggplot(d, aes(crop_season, yield_tha)) +
+    geom_boxplot(fill = "#a1d99b", outlier.shape = NA, width = 0.5) +
+    geom_jitter(aes(colour = crop_unified), width = 0.15, height = 0, alpha = 0.4, size = 1.2) +
+    geom_text(data = n_lab, aes(crop_season, -Inf, label = paste0("n = ", n)), vjust = -0.5, size = 4) +
+    labs(x = "Crop season", y = expression(Yield~(t~ha^-1)), colour = "Crop",
+         caption = paste("Excluded:", paste(exclude, collapse = ", "))) +
+    theme_bw(base_size = 14)
+  tab <- d |>
+    dplyr::summarise(n = dplyr::n(), mean = mean(yield_tha), sd = stats::sd(yield_tha),
+                     median = stats::median(yield_tha), .by = c(crop_season, crop_unified)) |>
+    dplyr::arrange(crop_season, crop_unified)
+  c(save_plot(p, file.path(dir, "season_yield_without_maize.png"), 7, 6),
+    save_table(tab, file.path(dir, "season_yield_without_maize.csv")))
+}
+

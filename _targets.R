@@ -50,6 +50,7 @@ list(
   tar_target(f_swf, list.files(path_in("swf"), "\\.tif$", recursive = TRUE, full.names = TRUE), format = "file"),
   tar_target(f_soil, list.files(path_in("soilgrids"), "\\.tif$", full.names = TRUE), format = "file"),
   
+  
   # (1) data preparation: single fields (row numbers from the original scripts)
   tar_target(signal16, prep_signal16(f_signal16) |> check_nrow(120, "signal16")),
   tar_target(wendhausen, prep_wendhausen(signal16, f_wendhausen) |> check_field_data(140, "wendhausen")),
@@ -101,6 +102,7 @@ list(
   tar_target(mean_sd_check, mean_sd_compare(moddata, zuur_dir), format = "file"),
   tar_target(add_season_croptype, season_croptype(moddata, zuur_dir), format = "file"), 
   tar_target(site_map, plot_site_map(moddata, dffinal, file.path(zuur_dir, "GermanMap.png")), format = "file"),
+  tar_target(season_yield, plot_season_yield(moddata, zuur_dir), format = "file"),
   
   # (3) modelling ----------------------------------------------------------------
   tar_target(gamdata, add_swf_matrix(moddata)),
@@ -130,5 +132,26 @@ list(
   tar_target(fig_coef_forest, plot_coef_forest(models, file.path(model_dir, "effects_parametric_all_models.png")), format = "file"),
   tar_target(fig_smooth_heatmap, plot_smooth_heatmap(models, file.path(model_dir, "effects_smooth_all_models.png")), format = "file"),
   tar_target(fig_swf_profiles, plot_swf_profiles(swf, file.path(model_dir, "swf_profiles_by_field.png")), format = "file"),
-  tar_target(fig_yield_by_field, plot_yield_by_field(moddata, file.path(model_dir, "yield_distance_by_field.png")), format = "file")
+  tar_target(fig_yield_by_field, plot_yield_by_field(moddata, file.path(model_dir, "yield_distance_by_field.png")), format = "file"),
+  
+  # (5) same models with relative yield (yield / maximum yield of the crop) ----
+  tar_target(model_spec_rel, model_formulas("yield_rel_crop", crop_main = FALSE)),
+  tar_target(models_rel, fit_model(gamdata, model_spec_rel), pattern = map(model_spec_rel), iteration = "list"),
+  tar_target(model_dir_rel, res_dir("04_models_relative_yield")),
+  tar_target(model_tables_rel, save_model_tables(models_rel, model_dir_rel), format = "file"),
+  tar_target(model_figures_rel, save_model_figures(models_rel, model_dir_rel), format = "file"),
+  tar_target(fig_aic_rel, plot_aic(models_rel, file.path(model_dir_rel, "aic_h1_h2.png")), format = "file"),
+  tar_target(fig_coef_forest_rel, plot_coef_forest(models_rel, file.path(model_dir_rel, "effects_parametric_all_models.png")), format = "file"),
+  tar_target(fig_smooth_heatmap_rel, plot_smooth_heatmap(models_rel, file.path(model_dir_rel, "effects_smooth_all_models.png")), format = "file"),
+  tar_target(fig_relative_yield_rel, plot_relative_yield(moddata, file.path(model_dir_rel, "yield_distance.png"),
+                                                         y = "yield_rel_crop", ylab = "Relative yield (yield / crop maximum)"), format = "file"),
+  tar_target(fig_yield_by_field_rel, plot_yield_by_field(moddata, file.path(model_dir_rel, "yield_distance_by_field.png"),
+                                                         y = "yield_rel_crop", ylab = "Relative yield (yield / crop maximum)"), format = "file"),
+  tar_target(fig_distance_crop_rel, plot_distance_by_crop(models_rel, gamdata, file.path(model_dir_rel, "m01c_distance_by_crop.png"),
+                                                          ylab = "Predicted relative yield"), format = "file"),
+  tar_target(fig_swf_function_rel, plot_swf_function(models_rel, gamdata, file.path(model_dir_rel, "m01d_swf_function.png")), format = "file"),
+  tar_target(fig_h2_model_swf_rel, plot_interaction_model(models_rel, gamdata, "swf_beyond", infield_var,
+                                                          file.path(model_dir_rel, "h2_model_swf.png")), format = "file"),
+  tar_target(fig_h2_model_shdi_rel, plot_interaction_model(models_rel, gamdata, "l_shdi", infield_var,
+                                                           file.path(model_dir_rel, "h2_model_shdi.png")), format = "file")
 )
