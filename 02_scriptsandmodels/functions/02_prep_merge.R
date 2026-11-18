@@ -81,7 +81,7 @@ merge_fields <- function(fields, fieldpolygons_file, fertilization_file,
       crop            = clean_label(crop),
       tree_species    = clean_label(tree_species),
       crop_unified    = unify_crop(crop),
-      system          = dplyr::if_else(stringr::str_detect(plot, control_pattern),
+      control_field          = dplyr::if_else(stringr::str_detect(plot, control_pattern),
                                        "control", "agroforestry"),
       yield_tha       = yield * yield_factor(yield_unit),
       yield_straw_tha = yield_straw * yield_factor(yield_unit),
@@ -101,7 +101,7 @@ merge_fields <- function(fields, fieldpolygons_file, fertilization_file,
       treeage = year - harvestyear
     ) |>
     dplyr::filter(!is.na(yield)) |>
-    dplyr::filter(keep_control & system == "control" | !is.na(distance_to_tree_strip)) |>
+    dplyr::filter(keep_control & control_field == "control" | !is.na(distance_to_tree_strip)) |>
     dplyr::filter(!(year == 2020 & plot == "V_AF_r4_4m"),
                   !(year == 2021 & plot == "V_AF_r1_18m")) |>
     dplyr::mutate(plot = dplyr::if_else(plot == "F_AF_r3_24m" & dplyr::near(yield, 625.42),
@@ -117,7 +117,7 @@ merge_fields <- function(fields, fieldpolygons_file, fertilization_file,
   d <- d |>
     dplyr::left_join(polygons, by = "field") |>
     dplyr::mutate(id = dplyr::case_when(
-      system == "control"                 ~ paste0(plot, "_", year),
+      control_field == "control"                 ~ paste0(plot, "_", year),
       stringr::str_detect(plot, "m$")     ~ paste0(plot, "_", year),
       stringr::str_detect(plot, "^Ih")    ~ paste0(plot, "m_", year),
       stringr::str_detect(plot, "^[A-Z]") ~ paste0(plot, "_", distance_to_tree_strip, "m_", year),
@@ -127,7 +127,7 @@ merge_fields <- function(fields, fieldpolygons_file, fertilization_file,
   dup <- duplicated(d$id) | duplicated(d$id, fromLast = TRUE)
   if (any(dup)) {
     message("merge_fields: removing ", sum(dup), " rows with duplicated id (",
-            sum(dup & d$system == "control"), " of them control)")
+            sum(dup & d$control_field == "control"), " of them control)")
   }
   d <- d[!dup, ]
   

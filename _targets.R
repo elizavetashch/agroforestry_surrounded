@@ -70,6 +70,7 @@ list(
                check_no_na(c("yield_tha", "crop_unified", "latitude", "longitude", "treeage"), "merged") |>
                check_no_na(c("gs_start_date", "gs_end_date"), "merged", warn = TRUE)
   ),
+  tar_target(merged_csv, save_table(merged, path_out("merged.csv")), format = "file"),
   tar_target(merged_with_control,
              merge_fields(list(wendhausen, dornburg, vechta, reiffenhausen, mariensee, forst, gladbacherhof, koch),
                           f_fieldpolygons, f_fertilization,
@@ -78,6 +79,7 @@ list(
                check_no_na(c("yield_tha", "crop_unified", "latitude", "longitude", "treeage", "system"), "merged_with_control") |>
                check_no_na(c("gs_start_date", "gs_end_date"), "merged_with_control", warn = TRUE)
   ),
+  tar_target(merged_with_control_csv, save_table(merged_with_control, path_out("merged_with_control.csv")), format = "file"),
   tar_target(field_coords, distinct(merged, field, latitude, longitude) |> check_unique("field", "field_coords")),
   tar_target(climate, extract_climate(field_coords, 2015:2023, path_in("dwd"))),
   tar_target(af_climate, add_climate(merged, climate) |>
