@@ -69,7 +69,7 @@ plot_coef_forest <- function(models, file) {
     geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
     geom_errorbar(aes(xmin = lwr, xmax = upr), width = 0.2, orientation = "y") +
     geom_point(size = 2) +
-    facet_wrap(~ term, scales = "free_x", ncol = 2) +
+    facet_wrap(~ term, scales = "free_x", ncol = 5) +
     scale_colour_manual(values = c("p < 0.05" = "black", "n.s." = "grey65")) +
     labs(x = "Effect on yield (%) with 95% CI", y = NULL, colour = NULL) +
     theme_bw(base_size = 11) +
@@ -78,7 +78,7 @@ plot_coef_forest <- function(models, file) {
       strip.text = element_text(size = 18)
     )
   print(p)  # shows it in the plot pane when run interactively
-  save_plot(p, file, 6, 18)
+  save_plot(p, file, 18, 7)
 }
 
 # smooth terms of all models: significance and edf ---------------------------
@@ -307,7 +307,7 @@ plot_swf_profiles <- function(swf, file) {
     geom_line(linewidth = 0.8) +
     geom_point(size = 1.5) +
     geom_point(data = within, shape = 17, size = 3.5) +
-    facet_wrap(~ field, ncol = 1) +
+    facet_wrap(~ field, ncol = 4) +
     scale_x_continuous(breaks = c(0, seq(200, 1000, 200)),
                        labels = c("within\nfield", seq(200, 1000, 200))) +
     scale_colour_manual(values = c("2015" = "#a1d99b", "2018" = "#41ab5d", "2021" = "#00441b")) +
@@ -317,7 +317,7 @@ plot_swf_profiles <- function(swf, file) {
     theme(legend.position = "bottom",
           strip.background = element_rect(fill = "#a1d99b", colour = "grey30"),
           strip.text = element_text(size = 14))
-  save_plot(p, file, 4, 12)
+  save_plot(p, file, 10, 4)
 }
 
 
@@ -350,5 +350,5 @@ plot_yield_by_field <- function(moddata, file, y = "yield_tha", ylab = "Yield (t
           strip.background = element_rect(fill = "#a1d99b", colour = "grey30"),
           strip.text = element_text(size = 12))
   
-  save_plot(p, file, 14, 8)
+  save_plot(p, file, 14,8)
 }
