@@ -34,7 +34,46 @@ yield_factor <- function(unit) {
   )
 }
 
-merge_fields <- function(fields, fieldpolygons_file, fertilization_file) {
+
+# ---- Control Statistics ---- --------------------------------------------
+
+#     CONTROL EXLUDED FROM THE DATASET 
+
+# > table(merged$field, merged$year)
+# 
+# 2016 2017 2018 2019 2020 2021 2022 2023
+# Dornburg        16   16   16   32   30   40   40   36
+# Forst           16   16    0   16   16    0    0    0
+# Gladbacherhof    0    0    0    0    0  144    0    0
+# IhingerHof      79    0   96    0    0   96   84   96
+# Mariensee        0   24   24    0    0    0    0    0
+# Reiffenhausen   12   12    0    0    0    0    0    0
+# Vechta           0    0    0   12   13   16   16   16
+# Wendhausen      16   16    0   16   16   16   16   16
+
+#     CONTROL INCLUDED IN THE DATASET 
+
+# > table(merged_with_control$field, merged_with_control$year)
+# 
+# 2016 2017 2018 2019 2020 2021 2022 2023
+# Dornburg        20   20   20   40   38   48   48   44
+# Forst           20   20    0   20   20    0    0    0
+# Gladbacherhof    0    0    0    0    0  144    0    0
+# IhingerHof      79    0   96    0    0   96   84   96
+# Mariensee        0   30   30    0    0    0    0    0
+# Reiffenhausen   16   16    0    0    0    0    0    0
+# Vechta           0    0    0   16   17   20   20   20
+# Wendhausen      20   20    0   20   20   20   20   20
+
+# ----- -------------------------------------------------------------------
+
+
+
+
+
+merge_fields <- function(fields, fieldpolygons_file, fertilization_file,
+                         keep_control = FALSE,
+                         control_pattern = "_C_|-C-") {
   d <- dplyr::bind_rows(lapply(fields, function(x) {
     dplyr::mutate(as_csv_types(x), dplyr::across(dplyr::any_of(c("plot", "crop", "tree_species", "fertilizer")), as.character))
   })) |>
@@ -42,6 +81,8 @@ merge_fields <- function(fields, fieldpolygons_file, fertilization_file) {
       crop            = clean_label(crop),
       tree_species    = clean_label(tree_species),
       crop_unified    = unify_crop(crop),
+      system          = dplyr::if_else(stringr::str_detect(plot, control_pattern),
+                                       "control", "agroforestry"),
       yield_tha       = yield * yield_factor(yield_unit),
       yield_straw_tha = yield_straw * yield_factor(yield_unit),
       harvestyear = dplyr::case_when(
@@ -59,38 +100,43 @@ merge_fields <- function(fields, fieldpolygons_file, fertilization_file) {
       ),
       treeage = year - harvestyear
     ) |>
-    dplyr::filter(!is.na(distance_to_tree_strip), !is.na(yield)) |>
+    dplyr::filter(!is.na(yield)) |>
+    dplyr::filter(keep_control & system == "control" | !is.na(distance_to_tree_strip)) |>
     dplyr::filter(!(year == 2020 & plot == "V_AF_r4_4m"),
                   !(year == 2021 & plot == "V_AF_r1_18m")) |>
     dplyr::mutate(plot = dplyr::if_else(plot == "F_AF_r3_24m" & dplyr::near(yield, 625.42),
                                         "F_AF_r4_24m", plot)) |>
     dplyr::filter(!is.na(yield_tha))
-
+  
   polygons <- readr::read_csv(fieldpolygons_file, show_col_types = FALSE) |>
     dplyr::mutate(field = short_field_name(Name)) |>
     dplyr::select(field, Latitude, Longitude, minLatitude, minLongitude,
                   maxLatitude, maxLongitude, Area) |>
     dplyr::distinct()
-
+  
   d <- d |>
     dplyr::left_join(polygons, by = "field") |>
     dplyr::mutate(id = dplyr::case_when(
+      system == "control"                 ~ paste0(plot, "_", year),
       stringr::str_detect(plot, "m$")     ~ paste0(plot, "_", year),
       stringr::str_detect(plot, "^Ih")    ~ paste0(plot, "m_", year),
       stringr::str_detect(plot, "^[A-Z]") ~ paste0(plot, "_", distance_to_tree_strip, "m_", year),
       field == "Gladbacherhof"            ~ paste0(plot, "_", distance_to_tree_strip, "m_", year)
     ))
-
+  
   dup <- duplicated(d$id) | duplicated(d$id, fromLast = TRUE)
-  if (any(dup)) message("merge_fields: removing ", sum(dup), " rows with duplicated id")
+  if (any(dup)) {
+    message("merge_fields: removing ", sum(dup), " rows with duplicated id (",
+            sum(dup & d$system == "control"), " of them control)")
+  }
   d <- d[!dup, ]
-
+  
   fertilization <- readr::read_csv(fertilization_file, show_col_types = FALSE) |>
     janitor::clean_names() |>
-    dplyr::select(-crop)
-
+    dplyr::select(-dplyr::any_of("crop"))
+  
   d$fertilizer[is.na(d$fertilizer)] <- "normal"
-
+  
   d |>
     dplyr::left_join(fertilization, by = c("field", "year" = "harvest_year", "crop_unified", "fertilizer")) |>
     dplyr::mutate(

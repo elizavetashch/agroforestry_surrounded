@@ -51,7 +51,7 @@ list(
   tar_target(f_soil, list.files(path_in("soilgrids"), "\\.tif$", full.names = TRUE), format = "file"),
   
   
-  # (1) data preparation: single fields (row numbers from the original scripts)
+  # (1) data preparation: single fields 
   tar_target(signal16, prep_signal16(f_signal16) |> check_nrow(120, "signal16")),
   tar_target(wendhausen, prep_wendhausen(signal16, f_wendhausen) |> check_field_data(140, "wendhausen")),
   tar_target(dornburg, prep_dornburg(signal16, f_dornburgvechta) |> check_field_data(280, "dornburg")),
@@ -65,10 +65,18 @@ list(
   # (1) data preparation: merge and add site variables
   tar_target(merged,
              merge_fields(list(wendhausen, dornburg, vechta, reiffenhausen, mariensee, forst, gladbacherhof, koch),
-                          f_fieldpolygons, f_fertilization) |>
+                          f_fieldpolygons, f_fertilization)|>
                check_unique("id", "merged") |>
                check_no_na(c("yield_tha", "crop_unified", "latitude", "longitude", "treeage"), "merged") |>
                check_no_na(c("gs_start_date", "gs_end_date"), "merged", warn = TRUE)
+  ),
+  tar_target(merged_with_control,
+             merge_fields(list(wendhausen, dornburg, vechta, reiffenhausen, mariensee, forst, gladbacherhof, koch),
+                          f_fieldpolygons, f_fertilization,
+                          keep_control = TRUE) |>
+               check_unique("id", "merged_with_control") |>
+               check_no_na(c("yield_tha", "crop_unified", "latitude", "longitude", "treeage", "system"), "merged_with_control") |>
+               check_no_na(c("gs_start_date", "gs_end_date"), "merged_with_control", warn = TRUE)
   ),
   tar_target(field_coords, distinct(merged, field, latitude, longitude) |> check_unique("field", "field_coords")),
   tar_target(climate, extract_climate(field_coords, 2015:2023, path_in("dwd"))),
