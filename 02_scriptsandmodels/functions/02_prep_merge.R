@@ -86,7 +86,8 @@ merge_fields <- function(fields, fieldpolygons_file, fertilization_file) {
   d <- d[!dup, ]
 
   fertilization <- readr::read_csv(fertilization_file, show_col_types = FALSE) |>
-    janitor::clean_names()
+    janitor::clean_names() |>
+    dplyr::select(-crop)
 
   d$fertilizer[is.na(d$fertilizer)] <- "normal"
 
