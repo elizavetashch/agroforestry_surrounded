@@ -163,5 +163,20 @@ list(
   tar_target(fig_h2_model_swf_rel, plot_interaction_model(models_rel, gamdata, "swf_beyond", infield_var,
                                                           file.path(model_dir_rel, "h2_model_swf.png")), format = "file"),
   tar_target(fig_h2_model_shdi_rel, plot_interaction_model(models_rel, gamdata, "l_shdi", infield_var,
-                                                           file.path(model_dir_rel, "h2_model_shdi.png")), format = "file")
+                                                           file.path(model_dir_rel, "h2_model_shdi.png")), format = "file"),
+  
+  
+  # (6) control comparison 
+  tar_target(control_dir, res_dir("05_control_comparison")),
+  tar_target(c_yield, control_yield(merged_with_control)),
+  
+  tar_target(fig_yield_timeseries,
+             plot_yield_timeseries(merged_with_control,
+                                   file.path(control_dir, "yield_timeseries_af_control.png")),format = "file"),
+  tar_target(fig_yield_bars,
+             plot_yield_bars(merged_with_control,
+                             file.path(control_dir, "yield_bars_af_control.png")),format = "file"),
+  tar_target(fig_control_yield,
+             plot_control_yield(c_yield,
+                                 file.path(control_dir, "relative_yield_all_fields.png")),format = "file")
 )
