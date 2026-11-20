@@ -2,7 +2,8 @@ random_terms <- "s(key34, bs = \"re\")"
 
 model_terms_library <- c(
   crop      = "crop_unified",
-  site      = "treeage + AFage + PC1_c + PC1_s",
+  site      = "treeage + AFage + PC1_c + PC1_s + sd_slope",
+  site_ctrl = "PC1_c + PC1_s + sd_slope",
   beyond_param = "s(swf_beyond, k = 3) + l_shdi + l_contag + l_ed",
   beyond    = "s(swf_beyond, k = 3) + s(l_shdi, k = 3) + l_contag + l_ed",
   beyond_fn = "s(R, by = SWF, k = 4) + s(l_shdi, k = 3) + l_contag + l_ed",
@@ -14,9 +15,15 @@ model_terms_library <- c(
   int_shdi  = "ti(l_shdi, prop_swf_within, k = c(3, 3))"
 )
 
-model_formulas <- function(response = "yield_tha", crop_main = TRUE) {
+# control = TRUE: same models for the control fields, without the terms that need trees
+# (distance, distance x tree age, tree age, AF age); models that become identical are dropped
+model_formulas <- function(response = "yield_tha", crop_main = TRUE, control = FALSE) {
   f <- function(keys) {
     if (!crop_main) keys <- setdiff(keys, "crop")
+    if (control) {
+      keys <- setdiff(keys, c("dist", "dist_crop", "dist_age"))
+      keys[keys == "site"] <- "site_ctrl"
+    }
     paste(response, "~", paste(c(model_terms_library[keys], random_terms), collapse = " + "))
   }
   h1 <- c("crop", "site", "beyond")
@@ -47,13 +54,14 @@ model_formulas <- function(response = "yield_tha", crop_main = TRUE) {
     m02dp = list(h = "H2: SWF beyond and Shannon diversity x in-field complexity", keys = c(h2p, "int_swf", "int_shdi"))
   )
   
-  data.frame(
+  out <- data.frame(
     name       = names(specs),
     hypothesis = vapply(specs, `[[`, character(1), "h"),
     formula    = vapply(specs, function(s) f(s$keys), character(1)),
     row.names  = NULL,
     stringsAsFactors = FALSE
   )
+  if (control) out[!duplicated(out$formula), ] else out
 }
 
 fit_model <- function(data, spec) {

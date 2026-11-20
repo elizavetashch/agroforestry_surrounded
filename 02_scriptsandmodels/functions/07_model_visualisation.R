@@ -33,7 +33,8 @@ model_terms <- function(models) {
 
 term_labels <- c(
   "treeage" = "Tree age", "AFage" = "Agroforestry system age", "PC1_c" = "PC1 climate",
-  "PC1_s" = "PC1 soil", "l_contag" = "Contagion", "l_ed" = "Edge density",
+  "PC1_s" = "PC1 soil", "l_contag" = "Contagion", "l_ed" = "Edge density", "sd_slope" = "Slope SD",
+  "l_shdi" = "Shannon diversity",
   "s(swf_beyond)" = "SWF mean", "s(l_shdi)" = "Shannon diversity",
   "s(prop_swf_within)" = "In-field complexity", "s(R):SWF" = "SWF rings (functional)",
   "s(distance_to_tree_strip)" = "Distance", "ti(distance_to_tree_strip,treeage)" = "Distance x tree age",
@@ -70,7 +71,7 @@ plot_coef_forest <- function(models, file) {
     geom_errorbar(aes(xmin = lwr, xmax = upr), width = 0.2, orientation = "y") +
     geom_point(size = 2) +
     facet_wrap(~ term, scales = "free_x", ncol = 5) +
-    scale_colour_manual(values = c("p < 0.05" = "black", "n.s." = "grey65")) +
+    scale_colour_manual(values = c("p < 0.05" = "#3C5488", "n.s." = "grey65")) +
     labs(x = "Effect on yield (%) with 95% CI", y = NULL, colour = NULL) +
     theme_bw(base_size = 11) +
     theme(
@@ -94,8 +95,8 @@ plot_smooth_heatmap <- function(models, file) {
   p <- ggplot(d, aes(model, term, fill = significance)) +
     geom_tile(colour = "white") +
     geom_text(aes(label = sprintf("%.1f", edf)), size = 3) +
-    scale_fill_manual(values = c("p < 0.001" = "grey25", "p < 0.01" = "grey50",
-                                 "p < 0.05" = "grey75", "n.s." = "grey95"), drop = FALSE) +
+    scale_fill_manual(values = c("p < 0.001" = "#3C5488", "p < 0.01" = "#7E8FB8",
+                                 "p < 0.05" = "#BEC7DC", "n.s." = "grey95"), drop = FALSE) +
     labs(x = NULL, y = NULL, fill = NULL, caption = "Numbers = effective degrees of freedom (1 = linear)") +
     theme_bw(base_size = 11) +
     theme(legend.position = "bottom", panel.grid = element_blank())
@@ -118,16 +119,16 @@ save_model_tables <- function(models, dir) {
 save_model_figures <- function(models, dir) {
   unlist(lapply(models, function(m) {
     f_check <- file.path(dir, paste0(m$name, "_diagnostics.png"))
-    grDevices::png(f_check, width = 2400, height = 2400, res = 300)
+    tmp <- png_open(width = 2400, height = 2400, res = 300)
     graphics::par(mfrow = c(2, 2))
     utils::capture.output(mgcv::gam.check(m$fit, pch = 16, cex = 0.5))
-    grDevices::dev.off()
+    png_close(tmp, f_check)
     
     f_smooth <- file.path(dir, paste0(m$name, "_smooths.png"))
-    grDevices::png(f_smooth, width = 3000, height = 3000, res = 300)
+    tmp <- png_open(width = 3000, height = 3000, res = 300)
     plot(m$fit, pages = 1, shade = TRUE, shade.col = "lightblue", seWithMean = TRUE,
          scale = 0, residuals = TRUE, pch = 16, cex = 0.3, col = "grey50")
-    grDevices::dev.off()
+    png_close(tmp, f_smooth)
     
     c(f_check, f_smooth)
   }))
@@ -144,10 +145,11 @@ plot_relative_yield <- function(moddata, file, y = "yield_tha", ylab = "Yield (t
               alpha = 0.6, linewidth = 0.4) +
     stat_summary(fun.data = mean_se, geom = "pointrange", colour = "black", size = 0.3) +
     facet_wrap(~ crop_unified, scales = "free_y") +
+    ggsci::scale_colour_npg() +
         labs(x = "Distance to tree strip (m)", y = ylab, colour = "Site") +
     theme_bw(base_size = 12) +
     theme(legend.position = "bottom",
-          strip.background = element_rect(fill = "#EEF3E8", colour = "grey30"),
+          strip.background = element_rect(fill = col_strip, colour = "grey30"),
           strip.text = element_text(size = 18))
   save_plot(p, file, 10, 7)
 }
@@ -182,8 +184,8 @@ plot_distance_by_crop <- function(models, data, file, model = "m01c", ylab = "Pr
   grid <- dplyr::left_join(grid, rng, by = "crop_unified") |>
     dplyr::filter(distance_to_tree_strip >= lo, distance_to_tree_strip <= hi)
   p <- ggplot(grid, aes(distance_to_tree_strip, fit)) +
-    geom_ribbon(aes(ymin = lwr, ymax = upr), fill = "grey80") +
-    geom_line() +
+    geom_ribbon(aes(ymin = lwr, ymax = upr), fill = col_system[["agroforestry"]], alpha = 0.25) +
+    geom_line(colour = col_system[["agroforestry"]]) +
     facet_wrap(~ crop_unified, scales = "free_y") +
     labs(x = "Distance to tree strip (m)", y = paste0(ylab, ", ", model, ", other covariates at median")) +
     theme_bw()
@@ -199,6 +201,7 @@ plot_aic <- function(models, file) {
                     .default                     = "H2: beyond x in-field interaction"))
   p <- ggplot(d, aes(delta_AIC, model, fill = hypothesis_group)) +
     geom_col() +
+    ggsci::scale_fill_npg() +
     geom_vline(xintercept = 2, linetype = "dashed", colour = "grey40") +
     labs(x = expression(Delta * "AIC (ML) relative to the best model"), y = NULL, fill = NULL) +
     theme_bw() +
@@ -219,8 +222,8 @@ plot_swf_function <- function(models, data, file, model = "m01d") {
   d <- data.frame(r = r, beta = drop(X[, cols] %*% stats::coef(m)[cols]),
                   se = sqrt(rowSums((X[, cols] %*% m$Vp[cols, cols]) * X[, cols])))
   p <- ggplot(d, aes(r, beta)) +
-    geom_ribbon(aes(ymin = beta - 1.96 * se, ymax = beta + 1.96 * se), fill = "grey80") +
-    geom_line() +
+    geom_ribbon(aes(ymin = beta - 1.96 * se, ymax = beta + 1.96 * se), fill = "#3C5488", alpha = 0.25) +
+    geom_line(colour = "#3C5488") +
     geom_hline(yintercept = 0, linetype = "dashed", colour = "grey40") +
     labs(x = "Distance of ring from field boundary (m)",
          y = expression(beta(r) ~ "(effect of woody share on log yield)")) +
@@ -234,6 +237,7 @@ plot_heterogeneity_space <- function(moddata, beyond, infield, file) {
   d <- dplyr::distinct(moddata, field, year, .data[[beyond]], .data[[infield]])
   p <- ggplot(d, aes(.data[[beyond]], .data[[infield]], colour = field)) +
     geom_point(size = 3) +
+    ggsci::scale_colour_npg() +
     labs(x = paste("Beyond-field heterogeneity:", beyond),
          y = paste("In-field complexity:", infield), colour = "Site") +
     theme_bw()
@@ -251,6 +255,7 @@ plot_interaction_raw <- function(moddata, beyond, infield, file) {
     geom_hline(yintercept = 1, linetype = "dashed", colour = "grey50") +
     geom_point(alpha = 0.7) +
     geom_smooth(method = "lm", formula = y ~ poly(x, 2), se = TRUE) +
+    ggsci::scale_colour_npg() +
     labs(x = paste("Beyond-field heterogeneity:", beyond),
          y = "Yield relative to crop mean (field x year x crop means)", colour = NULL) +
     theme_bw() +
@@ -281,6 +286,7 @@ plot_interaction_model <- function(models, data, beyond, infield, file, model = 
     geom_line(linewidth = 1) +
     geom_point(data = peaks, size = 3, shape = 21, colour = "black") +
     geom_rug(data = data.frame(b = unique(data[[beyond]])), aes(b), inherit.aes = FALSE) +
+    ggsci::scale_colour_npg() + ggsci::scale_fill_npg() +
     labs(x = paste("Beyond-field heterogeneity:", beyond), y = paste("Multiplicative effect on yield,", model),
          colour = "In-field complexity", fill = "In-field complexity") +
     theme_bw() +
@@ -302,22 +308,27 @@ plot_swf_profiles <- function(swf, file) {
     tidyr::pivot_longer(dplyr::starts_with("swf_d"), names_to = "ring", values_to = "prop") |>
     dplyr::mutate(distance = as.numeric(sub("swf_d", "", ring)))
   within <- dplyr::mutate(swf, distance = 0, prop = prop_swf_within)
-  p <- ggplot(rings, aes(distance, prop, colour = factor(swf_year))) +
+  rings$group <- paste(rings$control_field, rings$swf_year)
+  within$group <- paste(within$control_field, within$swf_year)
+  shades <- c(stats::setNames(col_af_shades, paste("agroforestry", c(2015, 2018, 2021))),
+              stats::setNames(col_ctrl_shades, paste("control", c(2015, 2018, 2021))))
+  p <- ggplot(rings, aes(distance, prop, colour = group)) +
     geom_vline(xintercept = 50, linetype = "dotted", colour = "grey50") +
-    geom_line(linewidth = 0.8) +
+    geom_line(aes(linetype = control_field), linewidth = 0.8) +
     geom_point(size = 1.5) +
     geom_point(data = within, shape = 17, size = 3.5) +
     facet_wrap(~ field, ncol = 4) +
     scale_x_continuous(breaks = c(0, seq(200, 1000, 200)),
                        labels = c("within\nfield", seq(200, 1000, 200))) +
-    scale_colour_manual(values = c("2015" = "#a1d99b", "2018" = "#41ab5d", "2021" = "#00441b")) +
+    scale_colour_manual(values = shades) +
     labs(x = "Distance from field boundary (m)", y = "Proportion of small woody features",
-         colour = "SWF reference year") +
+         colour = "System and SWF reference year", linetype = "System") +
     theme_bw(base_size = 12) +
     theme(legend.position = "bottom",
-          strip.background = element_rect(fill = "#a1d99b", colour = "grey30"),
-          strip.text = element_text(size = 14))
-  save_plot(p, file, 10, 4)
+          strip.background = element_rect(fill = col_strip, colour = "grey30"),
+          strip.text = element_text(size = 14),
+          panel.spacing.x = grid::unit(1.2, "lines"))
+  save_plot(p, file, 12, 6)
 }
 
 
@@ -343,12 +354,72 @@ plot_yield_by_field <- function(moddata, file, y = "yield_tha", ylab = "Yield (t
     geom_line(linewidth = 0.7) +
     geom_point(size = 2) +
     facet_wrap(~ title, ncol = 4, scales = "free_y") +
+    ggsci::scale_colour_npg() +
     labs(x = "Distance to tree strip (m)", y = ylab, colour = "Crop", linetype = "Year") +
     theme_bw(base_size = 12) +
     theme(legend.position = "right",
           legend.key.width = grid::unit(1.5, "cm"),
-          strip.background = element_rect(fill = "#a1d99b", colour = "grey30"),
+          strip.background = element_rect(fill = col_strip, colour = "grey30"),
           strip.text = element_text(size = 12))
   
   save_plot(p, file, 14,8)
+}
+
+# AF vs control --------------------------------------------------------------
+
+# field profiles: raw data, mean, SD and 95% CI per distance (agroforestry)
+# and for the control field, one panel per field
+plot_field_profiles <- function(moddata_all, file, y = "yield_tha", ylab = "Yield (t/ha)") {
+  d <- moddata_all
+  d$value <- d[[y]]
+  d$position <- ifelse(d$control_field == "control", "control",
+                       format(d$distance_to_tree_strip, trim = TRUE, drop0trailing = TRUE))
+  lv <- c(as.character(sort(unique(d$distance_to_tree_strip))), "control")
+  d$position <- factor(d$position, levels = lv[lv %in% d$position])
+  s <- d |>
+    dplyr::summarise(mean = mean(value), sd = stats::sd(value), n = dplyr::n(),
+                     .by = c(field, control_field, position)) |>
+    dplyr::mutate(ci = stats::qt(0.975, pmax(n - 1, 1)) * sd / sqrt(n))
+  p <- ggplot(d, aes(position, value, colour = control_field)) +
+    geom_jitter(width = 0.15, height = 0, alpha = 0.25, size = 1) +
+    geom_errorbar(data = s, aes(y = mean, ymin = mean - sd, ymax = mean + sd), width = 0, linewidth = 0.5) +
+    geom_errorbar(data = s, aes(y = mean, ymin = mean - ci, ymax = mean + ci), width = 0.3, linewidth = 1.1) +
+    geom_point(data = s, aes(y = mean), size = 2.5) +
+    facet_wrap(~ field, ncol = 4, scales = "free") +
+    scale_colour_manual(values = col_system) +
+    labs(x = "Distance to tree strip (m) / control field", y = ylab, colour = NULL,
+         caption = "Points: raw data; thin bar: mean \u00b1 SD; thick bar: 95% CI of the mean") +
+    theme_bw(base_size = 12) +
+    theme(legend.position = "bottom",
+          strip.background = element_rect(fill = col_strip, colour = "grey30"),
+          strip.text = element_text(size = 13))
+  save_plot(p, file, 14, 8)
+}
+
+# parametric effects of one model, fitted separately for agroforestry and control,
+# as % change in yield with 95% CI
+plot_effects_compare <- function(models_af, models_ctrl, file, model = "m02d") {
+  pick <- function(models, system) {
+    m <- models[vapply(models, `[[`, "", "name") == model]
+    model_terms(m) |> dplyr::mutate(control_field = system)
+  }
+  d <- dplyr::bind_rows(pick(models_af, "agroforestry"), pick(models_ctrl, "control")) |>
+    dplyr::filter(type == "parametric", term != "(Intercept)") |>
+    dplyr::mutate(effect = 100 * (exp(estimate) - 1),
+                  lwr = 100 * (exp(estimate - 1.96 * se) - 1),
+                  upr = 100 * (exp(estimate + 1.96 * se) - 1),
+                  significant = ifelse(p_value < 0.05, "p < 0.05", "n.s."),
+                  term = nice_term(term))
+  p <- ggplot(d, aes(effect, control_field, colour = control_field)) +
+    geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
+    geom_errorbar(aes(xmin = lwr, xmax = upr), width = 0.2, orientation = "y") +
+    geom_point(aes(shape = significant), size = 2.5) +
+    scale_shape_manual(values = c("p < 0.05" = 16, "n.s." = 1)) +
+    scale_colour_manual(values = col_system, guide = "none") +
+    facet_wrap(~ term, scales = "free_x", ncol = 4) +
+    labs(x = paste("Effect on yield (%) with 95% CI,", model), y = NULL, shape = NULL) +
+    theme_bw(base_size = 12) +
+    theme(legend.position = "bottom",
+          strip.background = element_rect(fill = col_strip, colour = "grey30"))
+  save_plot(p, file, 12, 8)
 }

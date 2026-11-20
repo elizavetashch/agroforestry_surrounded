@@ -1,6 +1,6 @@
 # ---- helpers ---------------------------------------------------------------
 
-control_field_colours <- c(agroforestry = "darkgreen", control = "orange")
+control_field_colours <- col_system
 
 summarise_yield <- function(d, groups) {
   d |>
@@ -40,6 +40,7 @@ plot_control_yield <- function(rel) {
     ggplot2::geom_boxplot(outlier.shape = NA, fill = "grey90") +
     ggplot2::geom_jitter(ggplot2::aes(colour = crop_unified),
                          width = 0.15, height = 0, size = 2) +
+    ggsci::scale_colour_npg() +
     ggplot2::labs(x = NULL,
                   y = "Agroforestry yield control to control (%)",
                   colour = "Crop") +
@@ -106,6 +107,7 @@ plot_control_yield <- function(rel, file) {
     geom_hline(yintercept = 100, linetype = "dashed", colour = "grey50") +
     geom_boxplot(outlier.shape = NA, fill = "grey90") +
     geom_jitter(aes(colour = crop_unified), width = 0.15, height = 0, size = 2) +
+    ggsci::scale_colour_npg() +
     labs(x = NULL, y = "Agroforestry yield control to control (%)", colour = "Crop") +
     theme_bw(base_size = 11) +
     theme(

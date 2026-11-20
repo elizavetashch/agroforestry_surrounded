@@ -17,13 +17,17 @@ zuur <- list(
   random = c("field", "year"),
   groups       = c("field", "year", "crop_unified", "crop_season", "distance_to_tree_strip"),
   covariates   = c("distance_to_tree_strip", "treeage", "AFage", "l_shdi", "l_contag", "l_ed",
-                   "mean_slope", "prop_swf_within", "swf_beyond", "PC1_c", "PC1_s"),
+                   "mean_slope", "sd_slope", "prop_swf_within", "swf_beyond", "PC1_c", "PC1_s"),
   condition    = "crop_season",
   interactions = c("crop_unified", "crop_season"),
   order_by     = c("field", "plot", "year")
 )
 
 infield_var <- "prop_swf_within"
+
+# collinearity check (Zuur step 5) on the raw variables, before the PCA is built
+collin_vars <- c("treeage", "AFage", "l_shdi", "l_contag", "l_ed", "mean_slope", "sd_slope",
+                 "prop_swf_within", "swf_beyond", clim_vars, soil_vars)
 
 family_formula <- "yield_tha ~ crop_unified + s(distance_to_tree_strip, k = 5, by = crop_unified) + s(field, bs = \"re\") + s(year, bs = \"re\")"
 
@@ -43,11 +47,10 @@ list(
   tar_target(f_forst, path_in("yields", "BONARES_Forst1920", "signal.ID_7060_CROP_YIELDS_FORST_2019_2020.csv"), format = "file"),
   tar_target(f_gladbacherhof, path_in("yields", "Gladbacherhof21", "yield.csv"), format = "file"),
   tar_target(f_koch, path_in("yields", "Koch25", "yields_wintercrops.csv"), format = "file"),
-  tar_target(f_fieldpolygons, path_in("fields", "fieldpolygons.csv"), format = "file"),
+  tar_target(f_fieldpolygons, path_in("fields", "fieldpolygons_with_control.csv"), format = "file"),
   tar_target(f_fertilization, path_in("fields", "DataDescription_Fertilization.csv"), format = "file"),
-  tar_target(f_slope, path_in("slope", "slope.csv"), format = "file"),
   tar_target(f_lulc, list.files(path_in("lulc"), "\\.tif$", recursive = TRUE, full.names = TRUE), format = "file"),
-  tar_target(f_swf, list.files(path_in("swf"), "\\.tif$", recursive = TRUE, full.names = TRUE), format = "file"),
+  tar_target(f_swf, list.files(path_in("swf_raw"), "\\.tif$", recursive = TRUE, full.names = TRUE), format = "file"),
   tar_target(f_soil, list.files(path_in("soilgrids"), "\\.tif$", full.names = TRUE), format = "file"),
   
   
@@ -76,26 +79,30 @@ list(
                           f_fieldpolygons, f_fertilization,
                           keep_control = TRUE) |>
                check_unique("id", "merged_with_control") |>
-               check_no_na(c("yield_tha", "crop_unified", "latitude", "longitude", "treeage", "system"), "merged_with_control") |>
+               check_no_na(c("yield_tha", "crop_unified", "latitude", "longitude", "treeage", "control_field"), "merged_with_control") |>
                check_no_na(c("gs_start_date", "gs_end_date"), "merged_with_control", warn = TRUE)
   ),
   tar_target(merged_with_control_csv, save_table(merged_with_control, path_out("merged_with_control.csv")), format = "file"),
-  tar_target(field_coords, distinct(merged, field, latitude, longitude) |> check_unique("field", "field_coords")),
+  tar_target(field_coords, distinct(merged_with_control, field, control_field, latitude, longitude) |>
+               check_unique(c("field", "control_field"), "field_coords")),
   tar_target(climate, extract_climate(field_coords, 2015:2023, path_in("dwd"))),
-  tar_target(af_climate, add_climate(merged, climate) |>
-               check_same_rows(merged, "af_climate") |>
+  tar_target(af_climate, add_climate(merged_with_control, climate) |>
+               check_same_rows(merged_with_control, "af_climate") |>
                check_no_na(clim_vars, "af_climate", warn = TRUE)),
-  tar_target(lulc, lulc_metrics(f_fieldpolygons, f_lulc) |> check_unique(c("field", "year"), "lulc")),
+  tar_target(lulc, lulc_metrics(f_fieldpolygons, f_lulc) |> check_unique(c("field", "control_field", "year"), "lulc")),
   tar_target(af_lulc, add_lulc(af_climate, lulc) |>
                check_same_rows(af_climate, "af_lulc") |>
                check_no_na(c("l_shdi", "l_contag", "l_ed"), "af_lulc", warn = TRUE)),
-  tar_target(af_slope, add_slope(af_lulc, f_slope) |> check_same_rows(af_lulc, "af_slope")),
-  tar_target(soil, soil_texture(f_fieldpolygons, f_soil) |> check_cols(soil_vars, "soil") |> check_unique("field", "soil")),
-  tar_target(swf, swf_profiles(f_fieldpolygons, f_swf) |> check_unique(c("field", "swf_year"), "swf")),
+  tar_target(af_slope, add_slope(af_lulc, f_fieldpolygons) |> check_same_rows(af_lulc, "af_slope")),
+  tar_target(soil, soil_texture(f_fieldpolygons, f_soil) |> check_cols(soil_vars, "soil") |> check_unique(c("field", "control_field"), "soil")),
+  tar_target(swf, swf_profiles(f_fieldpolygons, f_swf) |> check_unique(c("field", "control_field", "swf_year"), "swf")),
   tar_target(dffinal, finalise_dataset(af_slope, soil) |> check_unique("id", "dffinal")),
-  tar_target(moddata, make_moddata(dffinal, swf, clim_vars, soil_vars) |> check_moddata()),
-  tar_target(moddata_csv, save_table(moddata, path_out("moddata.csv")), format = "file"),
-  tar_target(pca_files, pca_tables(moddata, clim_vars, soil_vars, res_dir("01_dataprep")), format = "file"),
+  tar_target(moddata_base, make_moddata(dffinal, swf, clim_vars, soil_vars, pca = FALSE)),
+  tar_target(moddata_all, add_pca(moddata_base, clim_vars, soil_vars)),
+  tar_target(moddata, select_system(moddata_all, "agroforestry") |> check_moddata()),
+  tar_target(moddata_ctrl, select_system(moddata_all, "control") |> check_moddata("moddata_ctrl", control = TRUE)),
+  tar_target(moddata_csv, save_table(moddata_all, path_out("moddata.csv")), format = "file"),
+  tar_target(pca_files, pca_tables(moddata_all, clim_vars, soil_vars, res_dir("01_dataprep")), format = "file"),
   
   # (2) data exploration after Zuur et al. 2010 --------------------------------
   tar_target(zuur_dir, res_dir("02_exploration_zuur")),
@@ -103,7 +110,7 @@ list(
   tar_target(zuur2, zuur_step2_variance(moddata, zuur$y, zuur$groups, zuur_dir), format = "file"),
   tar_target(zuur3, zuur_step3_normality(moddata, zuur$y, zuur$groups, zuur_dir), format = "file"),
   tar_target(zuur4, zuur_step4_zeros(moddata, zuur$y, zuur$groups, zuur_dir), format = "file"),
-  tar_target(zuur5, zuur_step5_collinearity(moddata, zuur$covariates, zuur_dir), format = "file"),
+  tar_target(zuur5, zuur_step5_collinearity(moddata_base, collin_vars, zuur_dir), format = "file"),
   tar_target(zuur6, zuur_step6_relationships(moddata, zuur$y, zuur$covariates, zuur$condition, zuur_dir), format = "file"),
   tar_target(zuur7, zuur_step7_interactions(moddata, zuur$y, zuur$covariates, zuur$interactions, zuur_dir), format = "file"),
   tar_target(zuur8, zuur_step8_independence(moddata, zuur$naive, zuur$random, zuur$order_by, zuur_dir), format = "file"),
@@ -178,5 +185,27 @@ list(
                              file.path(control_dir, "yield_bars_af_control.png")),format = "file"),
   tar_target(fig_control_yield,
              plot_control_yield(c_yield,
-                                 file.path(control_dir, "relative_yield_all_fields.png")),format = "file")
+                                 file.path(control_dir, "relative_yield_all_fields.png")),format = "file"),
+
+  # (7) same models for the control fields --------------------------------------
+  tar_target(gamdata_ctrl, add_swf_matrix(moddata_ctrl)),
+  tar_target(model_spec_ctrl, model_formulas(control = TRUE)),
+  tar_target(models_ctrl, fit_model(gamdata_ctrl, model_spec_ctrl), pattern = map(model_spec_ctrl), iteration = "list"),
+  tar_target(model_dir_ctrl, res_dir("06_models_control")),
+  tar_target(model_tables_ctrl, save_model_tables(models_ctrl, model_dir_ctrl), format = "file"),
+  tar_target(model_figures_ctrl, save_model_figures(models_ctrl, model_dir_ctrl), format = "file"),
+  tar_target(fig_aic_ctrl, plot_aic(models_ctrl, file.path(model_dir_ctrl, "aic_h1_h2.png")), format = "file"),
+  tar_target(fig_coef_forest_ctrl, plot_coef_forest(models_ctrl, file.path(model_dir_ctrl, "effects_parametric_all_models.png")), format = "file"),
+  tar_target(fig_smooth_heatmap_ctrl, plot_smooth_heatmap(models_ctrl, file.path(model_dir_ctrl, "effects_smooth_all_models.png")), format = "file"),
+  tar_target(fig_swf_function_ctrl, plot_swf_function(models_ctrl, gamdata_ctrl, file.path(model_dir_ctrl, "m01d_swf_function.png")), format = "file"),
+  tar_target(fig_h2_model_swf_ctrl, plot_interaction_model(models_ctrl, gamdata_ctrl, "swf_beyond", infield_var,
+                                                           file.path(model_dir_ctrl, "h2_model_swf.png")), format = "file"),
+  tar_target(fig_h2_model_shdi_ctrl, plot_interaction_model(models_ctrl, gamdata_ctrl, "l_shdi", infield_var,
+                                                            file.path(model_dir_ctrl, "h2_model_shdi.png")), format = "file"),
+
+  # (8) agroforestry vs control: field profiles and model effects ---------------
+  tar_target(fig_field_profiles, plot_field_profiles(moddata_all, file.path(control_dir, "field_profiles_yield.png")), format = "file"),
+  tar_target(fig_field_profiles_rel, plot_field_profiles(moddata_all, file.path(control_dir, "field_profiles_relative_yield.png"),
+                                                         y = "yield_rel_crop", ylab = "Relative yield (yield / crop maximum)"), format = "file"),
+  tar_target(fig_effects_compare, plot_effects_compare(models, models_ctrl, file.path(control_dir, "effects_af_vs_control_m02d.png")), format = "file")
 )

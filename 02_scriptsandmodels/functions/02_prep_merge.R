@@ -108,14 +108,13 @@ merge_fields <- function(fields, fieldpolygons_file, fertilization_file,
                                         "F_AF_r4_24m", plot)) |>
     dplyr::filter(!is.na(yield_tha))
   
-  polygons <- readr::read_csv(fieldpolygons_file, show_col_types = FALSE) |>
-    dplyr::mutate(field = short_field_name(Name)) |>
-    dplyr::select(field, Latitude, Longitude, minLatitude, minLongitude,
+  polygons <- read_fieldpolygons(fieldpolygons_file) |>
+    dplyr::select(field, control_field, Latitude, Longitude, minLatitude, minLongitude,
                   maxLatitude, maxLongitude, Area) |>
     dplyr::distinct()
   
   d <- d |>
-    dplyr::left_join(polygons, by = "field") |>
+    dplyr::left_join(polygons, by = c("field", "control_field")) |>
     dplyr::mutate(id = dplyr::case_when(
       control_field == "control"                 ~ paste0(plot, "_", year),
       stringr::str_detect(plot, "m$")     ~ paste0(plot, "_", year),

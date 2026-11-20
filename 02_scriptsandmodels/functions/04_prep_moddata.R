@@ -4,7 +4,7 @@ af_planting_year <- c(
 )
 
 finalise_dataset <- function(df, soil) {
-  d <- dplyr::left_join(df, soil, by = "field", relationship = "many-to-one")
+  d <- dplyr::left_join(df, soil, by = c("field", "control_field"), relationship = "many-to-one")
   fert_raw <- d$fertilization_rate_kg_n_p_k_ha_1_year_1
   for (dash in c("\u2013", "\u2212")) fert_raw <- gsub(dash, "-", fert_raw, fixed = TRUE)
   d$fert_N <- suppressWarnings(as.numeric(sub("^([0-9.]+).*", "\\1", fert_raw)))
@@ -28,16 +28,16 @@ first_pc <- function(units, vars) {
   stats::prcomp(units[vars], scale. = TRUE)
 }
 
-make_moddata <- function(df, swf, clim_vars, soil_vars) {
+make_moddata <- function(df, swf, clim_vars, soil_vars, pca = TRUE) {
   keys140 <- c("field", "year", "crop_unified", "distance_to_tree_strip")
-  const_vars <- c("AFage", "treeage", "l_shdi", "l_ed", "l_np", "l_contag", "mean_slope",
+  const_vars <- c("AFage", "treeage", "l_shdi", "l_ed", "l_np", "l_contag", "mean_slope", "sd_slope",
                   "prop_swf_within", "sowing_month", "harvest_month")
   swf_cols <- grep("^swf_d", names(swf), value = TRUE)
   
   d <- df |>
     dplyr::mutate(swf_year = swf_reference_year(year)) |>
-    dplyr::left_join(swf, by = c("field", "swf_year"), relationship = "many-to-one") |>
-    dplyr::select(plot, dplyr::all_of(c(keys140, clim_vars, soil_vars, const_vars)),
+    dplyr::left_join(swf, by = c("field", "control_field", "swf_year"), relationship = "many-to-one") |>
+    dplyr::select(plot, control_field, dplyr::all_of(c(keys140, clim_vars, soil_vars, const_vars)),
                   swf_year, dplyr::all_of(swf_cols), yield_tha) |>
     dplyr::distinct() |>
     dplyr::mutate(swf_beyond = rowMeans(dplyr::across(dplyr::all_of(swf_cols)))) |>
@@ -46,8 +46,8 @@ make_moddata <- function(df, swf, clim_vars, soil_vars) {
         sowing_month %in% c("Sep", "Oct", "Nov", "Dec", "Jan") ~ "winter",
         sowing_month %in% c("Mar", "Apr", "May")               ~ "summer"
       ),
-      key34      = paste(field, year, crop_unified, sep = "_"),
-      field_year = paste(field, year, sep = "_"),
+      key34      = paste(field, control_field, year, crop_unified, sep = "_"),
+      field_year = paste(field, control_field, year, sep = "_"),
       key140     = paste(key34, distance_to_tree_strip, sep = "_")
     ) |>
     dplyr::mutate(key140_mean = mean(yield_tha), n_cell = dplyr::n(), .by = key140)
@@ -59,9 +59,16 @@ make_moddata <- function(df, swf, clim_vars, soil_vars) {
   d <- d |>
     dplyr::left_join(key34_ref, by = "key34") |>
     dplyr::mutate(yield_rel = yield_tha / key34_mean, key140_rel = key140_mean / key34_mean) |>
-    dplyr::mutate(dist_rel = distance_to_tree_strip / max(distance_to_tree_strip), .by = field_year) |>
+    dplyr::mutate(dist_rel = distance_to_tree_strip / suppressWarnings(max(distance_to_tree_strip, na.rm = TRUE)),
+                  .by = field_year) |>
     dplyr::mutate(yield_rel_crop = yield_tha / max(yield_tha), .by = crop_unified)
   
+  d <- dplyr::mutate(d, dplyr::across(c(field, year, crop_unified, crop_season, key34, control_field), as.factor))
+  if (pca) add_pca(d, clim_vars, soil_vars) else d
+}
+
+# first principal component of climate and of soil, one row per field x system x year x crop
+add_pca <- function(d, clim_vars, soil_vars) {
   clim_units <- dplyr::distinct(d, dplyr::across(dplyr::all_of(c("key34", clim_vars))))
   soil_units <- dplyr::distinct(d, dplyr::across(dplyr::all_of(c("key34", soil_vars))))
   clim_units$PC1_c <- first_pc(clim_units, clim_vars)$x[, 1]
@@ -70,9 +77,8 @@ make_moddata <- function(df, swf, clim_vars, soil_vars) {
   n <- nrow(d)
   d <- d |>
     dplyr::left_join(dplyr::select(clim_units, key34, PC1_c), by = "key34") |>
-    dplyr::left_join(dplyr::select(soil_units, key34, PC1_s), by = "key34") |>
-    dplyr::mutate(dplyr::across(c(field, year, crop_unified, crop_season, key34), as.factor))
-  if (nrow(d) != n) stop("make_moddata: PCA join duplicated rows (more than one climate or soil value per field x year x crop)")
+    dplyr::left_join(dplyr::select(soil_units, key34, PC1_s), by = "key34")
+  if (nrow(d) != n) stop("add_pca: PCA join duplicated rows (more than one climate or soil value per field x year x crop)")
   d
 }
 
@@ -102,4 +108,8 @@ add_swf_matrix <- function(moddata) {
   d$R <- matrix(radii, nrow = nrow(d), ncol = length(radii), byrow = TRUE)
   d[swf_cols] <- NULL
   d
+}
+# one system (agroforestry or control) of the model dataset, unused factor levels dropped
+select_system <- function(moddata, system) {
+  droplevels(moddata[moddata$control_field == system, ])
 }

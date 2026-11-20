@@ -56,13 +56,15 @@ check_field_data <- function(df, n, name) {
     check_no_na(c("field", "year", "plot", "data_id", "yield_unit"), name)
 }
 
-check_moddata <- function(df, name = "moddata") {
+check_moddata <- function(df, name = "moddata", control = FALSE) {
   swf_cols <- grep("^swf_d", names(df), value = TRUE)
+  key_cols <- c("yield_tha", "yield_rel", "distance_to_tree_strip", "field", "year", "crop_unified")
+  if (control) key_cols <- setdiff(key_cols, "distance_to_tree_strip")
   df |>
     check_unique(c("plot", "field", "year", "crop_unified", "distance_to_tree_strip"), name) |>
-    check_no_na(c("yield_tha", "yield_rel", "distance_to_tree_strip", "field", "year", "crop_unified"), name) |>
+    check_no_na(key_cols, name) |>
     check_no_na(c("treeage", "AFage", "crop_season", "PC1_c", "PC1_s", "l_shdi", "l_contag", "l_ed",
-                  "prop_swf_within", swf_cols), name, warn = TRUE) |>
+                  "sd_slope", "prop_swf_within", swf_cols), name, warn = TRUE) |>
     check_range("yield_tha", 0, 40, name) |>
     check_range("prop_swf_within", 0, 1, name)
   for (s in swf_cols) check_range(df, s, 0, 1, name)

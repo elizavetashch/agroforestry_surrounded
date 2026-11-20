@@ -13,7 +13,7 @@ zuur_step1_outliers <- function(df, y, covariates, dir) {
     tidyr::pivot_longer(-.row, names_to = "variable", values_to = "value")
 
   p <- ggplot(long, aes(value, .row)) +
-    geom_point(colour = "steelblue", size = 0.8) +
+    geom_point(colour = "#3C5488", size = 0.8) +
     facet_wrap(~ variable, scales = "free_x") +
     labs(x = "Value", y = "Order of the data") +
     theme_bw()
@@ -67,17 +67,17 @@ shapiro <- function(x) {
 
 zuur_step3_normality <- function(df, y, groups, dir) {
   p_hist <- ggplot(df, aes(.data[[y]])) +
-    geom_histogram(bins = 30, fill = "steelblue", colour = "white") +
+    geom_histogram(bins = 30, fill = "#3C5488", colour = "white") +
     theme_bw()
   p_qq <- ggplot(df, aes(sample = .data[[y]])) +
-    stat_qq(colour = "steelblue") +
-    stat_qq_line(colour = "red") +
+    stat_qq(colour = "#3C5488") +
+    stat_qq_line(colour = "#E64B35") +
     labs(x = "Theoretical quantiles", y = y) +
     theme_bw()
 
   plots <- vapply(groups, function(g) {
     p <- ggplot(df, aes(.data[[y]])) +
-      geom_histogram(bins = 20, fill = "steelblue", colour = "white") +
+      geom_histogram(bins = 20, fill = "#3C5488", colour = "white") +
       facet_wrap(vars(.data[[g]]), scales = "free_y") +
       theme_bw()
     save_plot(p, file.path(dir, paste0("step3_histogram_by_", g, ".png")), 10, 7)
@@ -130,9 +130,9 @@ zuur_step5_collinearity <- function(df, covariates, dir) {
   vif_tab <- data.frame(variable = vars, vif = round(vif(df, vars), 2), row.names = NULL)
 
   f_pairs <- file.path(dir, "step5_pairs.png")
-  grDevices::png(f_pairs, width = 3000, height = 3000, res = 200)
+  tmp <- png_open(width = 3000, height = 3000, res = 200)
   graphics::pairs(df[vars], panel = graphics::panel.smooth, pch = 16, cex = 0.4, col = "grey40")
-  grDevices::dev.off()
+  png_close(tmp, f_pairs)
 
   c(f_pairs,
     save_table(cor_tab, file.path(dir, "step5_correlation.csv")),
@@ -144,8 +144,8 @@ zuur_step6_relationships <- function(df, y, covariates, condition, dir) {
   vapply(numeric_cols(df, covariates), function(x) {
     p <- ggplot(df, aes(.data[[x]], .data[[y]])) +
       geom_point(alpha = 0.4, size = 1) +
-      geom_smooth(method = "loess", formula = y ~ x, se = FALSE, colour = "steelblue") +
-      geom_smooth(method = "lm", formula = y ~ x, se = FALSE, colour = "red", linetype = "dashed") +
+      geom_smooth(method = "loess", formula = y ~ x, se = FALSE, colour = "#3C5488") +
+      geom_smooth(method = "lm", formula = y ~ x, se = FALSE, colour = "#E64B35", linetype = "dashed") +
       facet_wrap(vars(.data[[condition]])) +
       labs(x = x, y = y) +
       theme_bw()
@@ -159,6 +159,7 @@ zuur_step7_interactions <- function(df, y, covariates, groups, dir) {
   mapply(function(x, g) {
     p <- ggplot(df, aes(.data[[x]], .data[[y]], colour = factor(.data[[g]]), fill = factor(.data[[g]]))) +
       geom_smooth(method = "lm", formula = y ~ x, alpha = 0.15) +
+      ggsci::scale_colour_npg() + ggsci::scale_fill_npg() +
       labs(x = x, y = y, colour = g, fill = g) +
       theme_bw()
     save_plot(p, file.path(dir, paste0("step7_", x, "_x_", g, ".png")))
@@ -173,7 +174,7 @@ zuur_step8_independence <- function(df, naive_formula, random, order_by, dir) {
   plots <- vapply(random, function(g) {
     p <- ggplot(d, aes(factor(.data[[g]]), .resid)) +
       geom_boxplot(fill = "grey85") +
-      geom_hline(yintercept = 0, linetype = "dashed", colour = "red") +
+      geom_hline(yintercept = 0, linetype = "dashed", colour = "#E64B35") +
       labs(x = g, y = "Residual (naive model)") +
       theme_bw()
     save_plot(p, file.path(dir, paste0("step8_residuals_by_", g, ".png")))
@@ -184,7 +185,7 @@ zuur_step8_independence <- function(df, naive_formula, random, order_by, dir) {
   ci <- stats::qnorm(0.975) / sqrt(length(res))
   p_acf <- ggplot(data.frame(lag = drop(a$lag), acf = drop(a$acf)), aes(lag, acf)) +
     geom_hline(yintercept = 0) +
-    geom_hline(yintercept = c(-ci, ci), linetype = "dashed", colour = "blue") +
+    geom_hline(yintercept = c(-ci, ci), linetype = "dashed", colour = "#3C5488") +
     geom_segment(aes(xend = lag, yend = 0)) +
     labs(x = "Lag", y = "ACF of naive residuals") +
     theme_bw()
@@ -240,7 +241,7 @@ family_qq <- function(df, y, dir) {
     data.frame(distribution = d, theoretical = dists[[d]]$q, observed = sort(x))
   }))
   p_qq <- ggplot(qq, aes(theoretical, observed)) +
-    geom_abline(colour = "red") +
+    geom_abline(colour = "#E64B35") +
     geom_point(size = 0.8, alpha = 0.5) +
     facet_wrap(~ distribution, scales = "free") +
     labs(x = "Theoretical quantiles", y = paste("Observed", y)) +
@@ -270,7 +271,7 @@ family_compare <- function(data, formula, dir) {
     dplyr::arrange(AIC)
   
   f_png <- file.path(dir, "family_residuals.png")
-  grDevices::png(f_png, width = 4000, height = 2000, res = 300)
+  tmp <- png_open(width = 4000, height = 2000, res = 300)
   graphics::par(mfrow = c(2, 4))
   for (n in names(fits)) mgcv::qq.gam(fits[[n]], pch = 16, cex = 0.4, main = paste("QQ:", n))
   for (n in names(fits)) {
@@ -278,7 +279,7 @@ family_compare <- function(data, formula, dir) {
          col = "grey40", xlab = "Fitted values", ylab = "Deviance residuals", main = paste("Residuals:", n))
     graphics::abline(h = 0, col = "red", lty = 2)
   }
-  grDevices::dev.off()
+  png_close(tmp, f_png)
   
   c(save_table(tab, file.path(dir, "step9_family_comparison_aic.csv")), f_png)
 }
@@ -311,7 +312,7 @@ plot_site_map <- function(moddata, dffinal, file) {
   p <- ggplot() +
     geom_polygon(data = germany, aes(long, lat, group = group),
                  fill = "white", colour = "grey30", linewidth = 0.4) +
-    geom_point(data = d, aes(lon, lat, size = n), colour = "#A2BD81", alpha = 0.7) +
+    geom_point(data = d, aes(lon, lat, size = n), colour = col_system[["agroforestry"]], alpha = 0.7) +
     geom_text(data = d, aes(lon + 0.35, lat, label = paste0(field, " (n = ", n, ")")),
               hjust = 0, size = 4.5) +
     scale_size(range = c(2, 9)) +
@@ -332,8 +333,9 @@ plot_season_yield <- function(moddata, dir, exclude = "maize") {
     dplyr::mutate(crop_unified = droplevels(crop_unified))
   n_lab <- dplyr::count(d, crop_season)
   p <- ggplot(d, aes(crop_season, yield_tha)) +
-    geom_boxplot(fill = "#a1d99b", outlier.shape = NA, width = 0.5) +
+    geom_boxplot(fill = col_strip, outlier.shape = NA, width = 0.5) +
     geom_jitter(aes(colour = crop_unified), width = 0.15, height = 0, alpha = 0.4, size = 1.2) +
+    ggsci::scale_colour_npg() +
     geom_text(data = n_lab, aes(crop_season, -Inf, label = paste0("n = ", n)), vjust = -0.5, size = 4) +
     labs(x = "Crop season", y = expression(Yield~(t~ha^-1)), colour = "Crop",
          caption = paste("Excluded:", paste(exclude, collapse = ", "))) +

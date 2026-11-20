@@ -23,6 +23,7 @@ extract_climate <- function(fields, years, dir) {
     vals <- terra::extract(r, loc)[, -1, drop = FALSE]
     data.frame(
       field    = rep(fields$field, times = ncol(vals)),
+      control_field = rep(fields$control_field, times = ncol(vals)),
       date     = rep(as.Date(paste0(ym[keep], "01"), "%Y%m%d"), each = nrow(vals)),
       variable = v,
       value    = unlist(vals, use.names = FALSE)
@@ -34,18 +35,18 @@ extract_climate <- function(fields, years, dir) {
 }
 
 add_climate <- function(df, climate) {
-  windows <- dplyr::distinct(df, field, gs_start_date, gs_end_date)
+  windows <- dplyr::distinct(df, field, control_field, gs_start_date, gs_end_date)
   season <- windows |>
-    dplyr::left_join(climate, by = "field", relationship = "many-to-many") |>
+    dplyr::left_join(climate, by = c("field", "control_field"), relationship = "many-to-many") |>
     dplyr::filter(date >= gs_start_date, date <= gs_end_date) |>
     dplyr::summarise(
       temp_C_mean    = mean(temp_C, na.rm = TRUE),
       sun_MJ_m2_mean = mean(sun_MJ_m2, na.rm = TRUE),
       precip_mm_sum  = sum(prec_mm, na.rm = TRUE),
-      .by = c(field, gs_start_date, gs_end_date)
+      .by = c(field, control_field, gs_start_date, gs_end_date)
     )
   df |>
-    dplyr::left_join(season, by = c("field", "gs_start_date", "gs_end_date")) |>
+    dplyr::left_join(season, by = c("field", "control_field", "gs_start_date", "gs_end_date")) |>
     dplyr::mutate(fieldlength = haversine(min_longitude, min_latitude, max_longitude, max_latitude))
 }
 
@@ -60,8 +61,7 @@ lulc_legend <- data.frame(
 # landscape metrics within a 3 km buffer around each field centre;
 # Forst lies in UTM zone 33U, all other fields in 32U
 lulc_metrics <- function(fieldpolygons_file, lulc_files, years = 2017:2023, buffer = 3000) {
-  fp <- utils::read.csv(fieldpolygons_file)
-  fp$field <- short_field_name(fp$Name)
+  fp <- read_fieldpolygons(fieldpolygons_file)
   out <- list()
   for (zone in c("32U", "33U")) {
     sites <- if (zone == "33U") fp[fp$field == "Forst", ] else fp[fp$field != "Forst", ]
@@ -78,6 +78,7 @@ lulc_metrics <- function(fieldpolygons_file, lulc_files, years = 2017:2023, buff
         rc <- terra::mask(terra::crop(r, p), p)
         out[[length(out) + 1]] <- data.frame(
           field    = sites$field[i],
+          control_field = sites$control_field[i],
           year     = yr,
           l_contag = landscapemetrics::lsm_l_contag(rc)$value,
           l_np     = landscapemetrics::lsm_l_np(rc)$value,
@@ -92,19 +93,20 @@ lulc_metrics <- function(fieldpolygons_file, lulc_files, years = 2017:2023, buff
   res <- dplyr::bind_rows(out)
   # no satellite coverage in 2016: 2017 values are used
   res16 <- dplyr::mutate(dplyr::filter(res, year == min(years)), year = 2016)
-  dplyr::arrange(dplyr::bind_rows(res, res16), field, year)
+  dplyr::arrange(dplyr::bind_rows(res, res16), field, control_field, year)
 }
 
 add_lulc <- function(df, lulc) {
-  dplyr::left_join(df, lulc, by = c("field", "year"), relationship = "many-to-one")
+  dplyr::left_join(df, lulc, by = c("field", "control_field", "year"), relationship = "many-to-one")
 }
 
-# Slope (zonal statistics of the DTM slope, exported from ArcGIS) ----------------
+# Slope (mean and SD of the DTM slope within each field polygon, columns MEAN and STD
+# of fieldpolygons_with_control.csv) ---------------------------------------------
 
-add_slope <- function(df, slope_file) {
-  slope <- utils::read.csv(slope_file) |>
-    dplyr::transmute(field = short_field_name(Name), min_slope = MIN, max_slope = MAX, mean_slope = MEAN)
-  dplyr::left_join(df, slope, by = "field", relationship = "many-to-one")
+add_slope <- function(df, fieldpolygons_file) {
+  slope <- read_fieldpolygons(fieldpolygons_file) |>
+    dplyr::select(field, control_field, mean_slope, sd_slope)
+  dplyr::left_join(df, slope, by = c("field", "control_field"), relationship = "many-to-one")
 }
 
 # Soil texture (SoilGrids, sampled at the field centre) -------------------------
@@ -119,17 +121,28 @@ soil_texture <- function(fieldpolygons_file, soil_files, soil_vars = c("clay", "
     stop("SoilGrids layers are named: ", paste(names(r), collapse = ", "),
          ". Expected one layer each for: ", paste(soil_vars, collapse = ", "))
   }
-  fp <- utils::read.csv(fieldpolygons_file)
+  fp <- read_fieldpolygons(fieldpolygons_file)
   pts <- sf::st_as_sf(fp, coords = c("Longitude", "Latitude"), crs = 4326) |>
     sf::st_transform(terra::crs(r))
   vals <- terra::extract(r, sf::st_coordinates(pts), method = "simple")
   vals$ID <- NULL
-  dplyr::bind_cols(data.frame(field = short_field_name(fp$Name)), vals)
+  dplyr::bind_cols(data.frame(field = fp$field, control_field = fp$control_field), vals)
 }
 
 # Small woody features (SWF) ------------------------------------------------------
 
-swf_patterns <- c("2015" = "_buf3000m_binary\\.tif$", "2018" = "_buf3000m\\.tif$", "2021" = "_buf3000m\\.tif$")
+# raw SWF maps per reference year, read from 01_inputdata/swf_raw/<year>/:
+#   2015: swf_2015_mosaic.tif, class 3 = woody feature (made binary here)
+#   2018, 2021: original tiles (0/1), combined into one virtual raster
+swf_raw_raster <- function(swf_raw_files, yr) {
+  f <- swf_raw_files[basename(dirname(swf_raw_files)) == yr]
+  if (!length(f)) stop("No raw SWF raster for ", yr)
+  if (length(f) == 1) terra::rast(f) else terra::vrt(f)
+}
+
+swf_binary <- function(r, yr) {
+  if (yr == "2015") terra::ifel(r == 3, 1, 0) else as.numeric(r)
+}
 
 swf_share <- function(raster, geom) {
   vals <- terra::extract(raster, terra::vect(geom))[[2]]
@@ -138,37 +151,34 @@ swf_share <- function(raster, geom) {
 }
 
 # share of woody pixels in rings of 100 m width outside the field boundary,
-# and inside the field (disk with half the field diagonal as radius)
-swf_profiles <- function(fieldpolygons_file, swf_files, distances = seq(100, 1000, by = 100)) {
-  fp <- utils::read.csv(fieldpolygons_file)
-  fp$field <- short_field_name(fp$Name)
+# and inside the field (disk with half the field diagonal as radius),
+# for agroforestry and control fields; each map is cut to a 3 km buffer first
+swf_profiles <- function(fieldpolygons_file, swf_raw_files, distances = seq(100, 1000, by = 100),
+                         years = c("2015", "2018", "2021"), buffer = 3000) {
+  fp <- read_fieldpolygons(fieldpolygons_file)
   fp$boundary_min <- haversine(fp$minLongitude, fp$minLatitude, fp$maxLongitude, fp$maxLatitude) / 2
-  pts <- sf::st_transform(sf::st_as_sf(fp, coords = c("Longitude", "Latitude"), crs = 4326), 3035)
 
   out <- list()
-  for (yr in names(swf_patterns)) {
-    files <- swf_files[basename(dirname(swf_files)) == yr & grepl(swf_patterns[[yr]], basename(swf_files))]
-    for (f in files) {
-      fid <- sub("^Ihinger$", "IhingerHof", sub("_.*", "", basename(f)))
-      pt <- pts[pts$field == fid, ]
-      if (!nrow(pt)) {
-        warning("No field polygon for SWF raster: ", basename(f))
-        next
-      }
-      r <- as.numeric(terra::rast(f))
-      bmin <- pt$boundary_min[1]
-      g <- sf::st_geometry(pt)
-      rings <- vapply(seq_along(distances), function(i) {
-        inner <- if (i == 1) bmin else bmin + distances[i - 1]
-        swf_share(r, sf::st_difference(sf::st_buffer(g, bmin + distances[i]), sf::st_buffer(g, inner)))
+  for (yr in years) {
+    r_all <- swf_raw_raster(swf_raw_files, yr)
+    pts <- sf::st_transform(sf::st_as_sf(fp, coords = c("Longitude", "Latitude"), crs = 4326), terra::crs(r_all))
+    for (i in seq_len(nrow(pts))) {
+      g <- sf::st_geometry(pts[i, ])
+      buf <- terra::vect(sf::st_buffer(g, buffer))
+      r <- swf_binary(terra::mask(terra::crop(r_all, buf), buf), yr)
+      bmin <- pts$boundary_min[i]
+      rings <- vapply(seq_along(distances), function(k) {
+        inner <- if (k == 1) bmin else bmin + distances[k - 1]
+        swf_share(r, sf::st_difference(sf::st_buffer(g, bmin + distances[k]), sf::st_buffer(g, inner)))
       }, numeric(1))
       out[[length(out) + 1]] <- data.frame(
-        field = fid,
+        field = pts$field[i],
+        control_field = pts$control_field[i],
         swf_year = as.numeric(yr),
         prop_swf_within = swf_share(r, sf::st_buffer(g, bmin)),
         t(stats::setNames(rings, paste0("swf_d", distances)))
       )
     }
   }
-  dplyr::arrange(dplyr::bind_rows(out), field, swf_year)
+  dplyr::arrange(dplyr::bind_rows(out), field, control_field, swf_year)
 }

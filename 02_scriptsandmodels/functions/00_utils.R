@@ -1,5 +1,11 @@
 path_in <- function(...) here::here("01_inputdata", ...)
 
+# colours (NPG palette, ggsci): agroforestry vs control and their shades
+col_system <- c(agroforestry = "#00A087", control = "#7E6148")
+col_af_shades   <- c("#80D0C3", "#00A087", "#005A4C")
+col_ctrl_shades <- c("#BFB0A3", "#7E6148", "#4A3929")
+col_strip <- "#CCECE6"
+
 path_out <- function(...) here::here("03_outputdata", ...)
 
 res_dir <- function(...) {
@@ -13,6 +19,20 @@ short_field_name <- function(x) {
   s <- gsub("\\s+", "", sub("\\s*field\\s*$", "", trimws(x), ignore.case = TRUE))
   s <- ifelse(tolower(s) %in% c("ihingerhof", "ihinger"), "IhingerHof", s)
   paste0(toupper(substr(s, 1, 1)), substr(s, 2, nchar(s)))
+}
+
+# field polygons incl. control fields (fieldpolygons_with_control.csv),
+# renamed to the column names used in the rest of the pipeline
+read_fieldpolygons <- function(file) {
+  readr::read_csv(file, show_col_types = FALSE) |>
+    dplyr::transmute(
+      field = short_field_name(field), control_field,
+      Latitude = cent_lat, Longitude = cent_long,
+      minLatitude = min_lat, minLongitude = min_long,
+      maxLatitude = max_lat, maxLongitude = max_long,
+      Area = area_ha, mean_slope = MEAN, sd_slope = STD
+    ) |>
+    as.data.frame()
 }
 
 # same formula and earth radius as geosphere::distHaversine
@@ -56,4 +76,17 @@ save_plot <- function(p, file, width = 8, height = 5) {
   dir.create(dirname(file), recursive = TRUE, showWarnings = FALSE)
   ggplot2::ggsave(file, p, width = width, height = height, dpi = 300)
   file
+}
+
+# base-graphics PNGs are drawn into a temporary file and then copied
+png_open <- function(...) {
+  tmp <- tempfile(fileext = ".png")
+  grDevices::png(tmp, ...)
+  tmp
+}
+
+png_close <- function(tmp, file) {
+  grDevices::dev.off()
+  file.copy(tmp, file, overwrite = TRUE)
+  invisible(file)
 }
