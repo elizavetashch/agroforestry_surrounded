@@ -31,6 +31,16 @@ collin_vars <- c("treeage", "AFage", "l_shdi", "l_contag", "l_ed", "mean_slope",
 
 family_formula <- "yield_tha ~ crop_unified + s(distance_to_tree_strip, k = 5, by = crop_unified) + s(field, bs = \"re\") + s(year, bs = \"re\")"
 
+# the same exploration for the control fields, without the terms that need trees
+zuur_ctrl <- modifyList(zuur, list(
+  naive      = "yield_tha ~ crop_unified",
+  groups     = setdiff(zuur$groups, "distance_to_tree_strip"),
+  covariates = setdiff(zuur$covariates, c("distance_to_tree_strip", "treeage", "AFage"))
+))
+collin_vars_ctrl <- setdiff(collin_vars, c("treeage", "AFage"))
+family_formula_ctrl <- "yield_tha ~ crop_unified + s(field, bs = \"re\") + s(year, bs = \"re\")"
+
+
 list(
   # (1) data preparation: input files ------------------------------------------
   tar_target(f_signal16, path_in("yields", "BONARES_SIGNAL16",
@@ -121,6 +131,23 @@ list(
   tar_target(site_map, plot_site_map(moddata, dffinal, file.path(zuur_dir, "GermanMap.png")), format = "file"),
   tar_target(season_yield, plot_season_yield(moddata, zuur_dir), format = "file"),
   
+  # (2b) data exploration after Zuur et al. 2010, control fields --------------------
+  tar_target(zuur_ctrl_dir, res_dir("02_exploration_zuur_control")),
+  tar_target(moddata_base_ctrl, select_system(moddata_base, "control")),
+  tar_target(zuur1_ctrl, zuur_step1_outliers(moddata_ctrl, zuur_ctrl$y, zuur_ctrl$covariates, zuur_ctrl_dir), format = "file"),
+  tar_target(zuur2_ctrl, zuur_step2_variance(moddata_ctrl, zuur_ctrl$y, zuur_ctrl$groups, zuur_ctrl_dir), format = "file"),
+  tar_target(zuur3_ctrl, zuur_step3_normality(moddata_ctrl, zuur_ctrl$y, zuur_ctrl$groups, zuur_ctrl_dir), format = "file"),
+  tar_target(zuur4_ctrl, zuur_step4_zeros(moddata_ctrl, zuur_ctrl$y, zuur_ctrl$groups, zuur_ctrl_dir), format = "file"),
+  tar_target(zuur5_ctrl, zuur_step5_collinearity(moddata_base_ctrl, collin_vars_ctrl, zuur_ctrl_dir), format = "file"),
+  tar_target(zuur6_ctrl, zuur_step6_relationships(moddata_ctrl, zuur_ctrl$y, zuur_ctrl$covariates, zuur_ctrl$condition, zuur_ctrl_dir), format = "file"),
+  tar_target(zuur7_ctrl, zuur_step7_interactions(moddata_ctrl, zuur_ctrl$y, zuur_ctrl$covariates, zuur_ctrl$interactions, zuur_ctrl_dir), format = "file"),
+  tar_target(zuur8_ctrl, zuur_step8_independence(moddata_ctrl, zuur_ctrl$naive, zuur_ctrl$random, zuur_ctrl$order_by, zuur_ctrl_dir), format = "file"),
+  tar_target(zuur9_ctrl, family_qq(moddata_ctrl, "yield_tha", zuur_ctrl_dir), format = "file"),
+  tar_target(family_check_ctrl, family_compare(gamdata_ctrl, family_formula_ctrl, zuur_ctrl_dir), format = "file"),
+  tar_target(mean_sd_check_ctrl, mean_sd_compare(moddata_ctrl, zuur_ctrl_dir), format = "file"),
+  tar_target(add_season_croptype_ctrl, season_croptype(moddata_ctrl, zuur_ctrl_dir), format = "file"),
+  tar_target(season_yield_ctrl, plot_season_yield(moddata_ctrl, zuur_ctrl_dir), format = "file"),
+  
   # (3) modelling ----------------------------------------------------------------
   tar_target(gamdata, add_swf_matrix(moddata)),
   tar_target(model_spec, model_formulas()),
@@ -202,10 +229,23 @@ list(
                                                            file.path(model_dir_ctrl, "h2_model_swf.png")), format = "file"),
   tar_target(fig_h2_model_shdi_ctrl, plot_interaction_model(models_ctrl, gamdata_ctrl, "l_shdi", infield_var,
                                                             file.path(model_dir_ctrl, "h2_model_shdi.png")), format = "file"),
+  
+  # (7b) relative yield models for the control fields ------------------------------
+  tar_target(model_spec_ctrl_rel, model_formulas("yield_rel_crop", crop_main = FALSE, control = TRUE)),
+  tar_target(models_ctrl_rel, fit_model(gamdata_ctrl, model_spec_ctrl_rel), pattern = map(model_spec_ctrl_rel), iteration = "list"),
+  tar_target(model_dir_ctrl_rel, res_dir("07_models_control_relative_yield")),
+  tar_target(model_tables_ctrl_rel, save_model_tables(models_ctrl_rel, model_dir_ctrl_rel), format = "file"),
+  tar_target(model_figures_ctrl_rel, save_model_figures(models_ctrl_rel, model_dir_ctrl_rel), format = "file"),
+  tar_target(fig_coef_forest_ctrl_rel, plot_coef_forest(models_ctrl_rel, file.path(model_dir_ctrl_rel, "effects_parametric_all_models.png")), format = "file"),
+  tar_target(fig_smooth_heatmap_ctrl_rel, plot_smooth_heatmap(models_ctrl_rel, file.path(model_dir_ctrl_rel, "effects_smooth_all_models.png")), format = "file"),
 
   # (8) agroforestry vs control: field profiles and model effects ---------------
   tar_target(fig_field_profiles, plot_field_profiles(moddata_all, file.path(control_dir, "field_profiles_yield.png")), format = "file"),
   tar_target(fig_field_profiles_rel, plot_field_profiles(moddata_all, file.path(control_dir, "field_profiles_relative_yield.png"),
                                                          y = "yield_rel_crop", ylab = "Relative yield (yield / crop maximum)"), format = "file"),
-  tar_target(fig_effects_compare, plot_effects_compare(models, models_ctrl, file.path(control_dir, "effects_af_vs_control_m02d.png")), format = "file")
-)
+  tar_target(fig_effects_compare, plot_effects_compare(models, models_ctrl, file.path(control_dir, "effects_af_vs_control_m02d.png")), format = "file"),
+  tar_target(fig_coef_forest_sets, plot_coef_forest_sets(list("Yield (t/ha)" = models, "Relative yield" = models_rel,
+                                                              "Control" = models_ctrl, "Control relative yield" = models_ctrl_rel),
+                                                         file.path(control_dir, "effects_parametric_all_sets.png"),
+                                                         colours = c("#00A087", "#3C5488", "#7E6148", "#E64B35")), format = "file")
+  )

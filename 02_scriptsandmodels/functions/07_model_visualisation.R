@@ -304,33 +304,41 @@ significantterms <- function(models){
 # SWF profile around each field: rings 100-1000 m, in-field share plotted at "within field" --------
 
 plot_swf_profiles <- function(swf, file) {
+  sys_lab <- c(agroforestry = "Agroforestry", control = "Control")
+  add_panel <- function(d) {
+    d$panel <- paste0(sys_lab[as.character(d$control_field)], ": ", d$field)
+    lv <- unique(d$panel[order(d$control_field, d$field)])
+    d$panel <- factor(d$panel, levels = lv)
+    d
+  }
   rings <- swf |>
     tidyr::pivot_longer(dplyr::starts_with("swf_d"), names_to = "ring", values_to = "prop") |>
-    dplyr::mutate(distance = as.numeric(sub("swf_d", "", ring)))
-  within <- dplyr::mutate(swf, distance = 0, prop = prop_swf_within)
+    dplyr::mutate(distance = as.numeric(sub("swf_d", "", ring))) |>
+    add_panel()
+  within <- add_panel(dplyr::mutate(swf, distance = 0, prop = prop_swf_within))
   rings$group <- paste(rings$control_field, rings$swf_year)
   within$group <- paste(within$control_field, within$swf_year)
   shades <- c(stats::setNames(col_af_shades, paste("agroforestry", c(2015, 2018, 2021))),
               stats::setNames(col_ctrl_shades, paste("control", c(2015, 2018, 2021))))
   p <- ggplot(rings, aes(distance, prop, colour = group)) +
     geom_vline(xintercept = 50, linetype = "dotted", colour = "grey50") +
-    geom_line(aes(linetype = control_field), linewidth = 0.8) +
+    geom_line(linewidth = 0.8) +
     geom_point(size = 1.5) +
     geom_point(data = within, shape = 17, size = 3.5) +
-    facet_wrap(~ field, ncol = 4) +
+    facet_wrap(~ panel, ncol = 4) +
     scale_x_continuous(breaks = c(0, seq(200, 1000, 200)),
                        labels = c("within\nfield", seq(200, 1000, 200))) +
-    scale_colour_manual(values = shades) +
+    scale_colour_manual(values = shades, labels = function(x) sub("^(\\w)", "\\U\\1", x, perl = TRUE)) +
+    guides(colour = guide_legend(nrow = 2, byrow = TRUE)) +
     labs(x = "Distance from field boundary (m)", y = "Proportion of small woody features",
-         colour = "System and SWF reference year", linetype = "System") +
+         colour = "SWF reference year") +
     theme_bw(base_size = 12) +
     theme(legend.position = "bottom",
           strip.background = element_rect(fill = col_strip, colour = "grey30"),
-          strip.text = element_text(size = 14),
+          strip.text = element_text(size = 13),
           panel.spacing.x = grid::unit(1.2, "lines"))
-  save_plot(p, file, 12, 6)
+  save_plot(p, file, 12, 11)
 }
-
 
 
 # yield along the distance gradient per field: colour = crop, line --------
@@ -422,4 +430,44 @@ plot_effects_compare <- function(models_af, models_ctrl, file, model = "m02d") {
     theme(legend.position = "bottom",
           strip.background = element_rect(fill = col_strip, colour = "grey30"))
   save_plot(p, file, 12, 8)
+}
+
+
+# parametric effects of all models of several model sets (e.g. yield, relative yield, control)
+# in one forest plot: one row per model, one bar per set, % change with 95% CI;
+# CIs wider than `cap` % are cut at `cap` so one unstable estimate does not squash a panel
+plot_coef_forest_sets <- function(model_sets, file,
+                                  colours = c("#00A087", "#3C5488", "#7E6148"), cap = 200) {
+  lv <- unique(unlist(lapply(model_sets, function(ms) vapply(ms, `[[`, "", "name"))))
+  d <- dplyr::bind_rows(lapply(names(model_sets), function(s) {
+    dplyr::mutate(model_terms(model_sets[[s]]), set = s)
+  })) |>
+    dplyr::filter(type == "parametric", term != "(Intercept)") |>
+    dplyr::mutate(
+      effect = 100 * (exp(estimate) - 1),
+      lwr = 100 * (exp(estimate - 1.96 * se) - 1),
+      upr = pmin(100 * (exp(estimate + 1.96 * se) - 1), cap),
+      effect = pmin(effect, cap),
+      significant = ifelse(p_value < 0.05, "p < 0.05", "n.s."),
+      term = nice_term(term),
+      set = factor(set, levels = names(model_sets)),
+      y = match(model, rev(lv)) + (length(model_sets) + 1) / 2 * 0.25 - as.numeric(set) * 0.25
+    )
+  p <- ggplot(d, aes(effect, y, colour = set)) +
+    geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
+    geom_errorbar(aes(xmin = lwr, xmax = upr), width = 0.15, orientation = "y") +
+    geom_point(aes(shape = significant), size = 1.8, fill = "white") +
+    facet_wrap(~ term, scales = "free_x", ncol = 5) +
+    scale_y_continuous(breaks = seq_along(lv), labels = rev(lv)) +
+    scale_colour_manual(values = stats::setNames(colours[seq_along(model_sets)], names(model_sets))) +
+    scale_shape_manual(values = c("p < 0.05" = 16, "n.s." = 21)) +
+    labs(x = "Effect (%) with 95% CI", y = NULL, colour = NULL, shape = NULL,
+         caption = paste0("Confidence intervals above +", cap, "% are cut at ", cap, "%")) +
+    theme_bw(base_size = 11) +
+    theme(legend.position = "bottom",
+          panel.grid.minor.y = element_blank(),
+          strip.background = element_rect(fill = col_strip, colour = "grey30"),
+          strip.text = element_text(size = 12))
+  print(p)
+  save_plot(p, file, 18, 18)
 }
